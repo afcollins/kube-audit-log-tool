@@ -334,6 +334,16 @@ func (s *EventStore) Timeline(buckets int) []TimelineBucket {
 	return BuildTimeline(s.Events, s.filtered, buckets)
 }
 
+// TimelineAll returns histogram buckets for all events (ignoring filters).
+// Used by the timeline panel to always show the full time range.
+func (s *EventStore) TimelineAll(buckets int) []TimelineBucket {
+	all := make([]int, len(s.Events))
+	for i := range all {
+		all[i] = i
+	}
+	return BuildTimeline(s.Events, all, buckets)
+}
+
 // ReadRawJSON returns the raw JSON for an event.
 func (s *EventStore) ReadRawJSON(eventIndex int) ([]byte, error) {
 	e := &s.Events[eventIndex]

@@ -3,6 +3,7 @@ package panel
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/afcollins/kube-audit-log-tool/internal/store"
 	"github.com/afcollins/kube-audit-log-tool/internal/tui/styles"
@@ -10,23 +11,98 @@ import (
 )
 
 type TimelinePanel struct {
-	Width   int
-	Height  int
-	Focused bool
+	Width      int
+	Height     int
+	Focused    bool
+	Cursor     int
+	SelectionStart int // -1 means no selection started
+	SelectionEnd   int // -1 means no selection ended
+	buckets    []store.TimelineBucket
 }
 
 func NewTimelinePanel() *TimelinePanel {
-	return &TimelinePanel{Height: 8}
+	return &TimelinePanel{
+		Height:         8,
+		SelectionStart: -1,
+		SelectionEnd:   -1,
+	}
+}
+
+func (tp *TimelinePanel) barWidth() int {
+	w := tp.Width - 26
+	if w < 10 {
+		w = 10
+	}
+	return w
+}
+
+func (tp *TimelinePanel) MoveLeft() {
+	if tp.Cursor > 0 {
+		tp.Cursor--
+	}
+}
+
+func (tp *TimelinePanel) MoveRight() {
+	if tp.Cursor < len(tp.buckets)-1 {
+		tp.Cursor++
+	}
+}
+
+// MarkSelection sets one end of the selection range. First press sets start,
+// second press sets end and returns true to signal the app to apply the filter.
+func (tp *TimelinePanel) MarkSelection() bool {
+	if len(tp.buckets) == 0 {
+		return false
+	}
+
+	if tp.SelectionStart == -1 {
+		// First mark: set start
+		tp.SelectionStart = tp.Cursor
+		tp.SelectionEnd = -1
+		return false
+	}
+
+	// Second mark: set end and signal ready to apply
+	tp.SelectionEnd = tp.Cursor
+
+	// Ensure start <= end
+	if tp.SelectionStart > tp.SelectionEnd {
+		tp.SelectionStart, tp.SelectionEnd = tp.SelectionEnd, tp.SelectionStart
+	}
+	return true
+}
+
+// SelectedTimeRange returns the time range of the current selection.
+func (tp *TimelinePanel) SelectedTimeRange() (time.Time, time.Time) {
+	if tp.SelectionStart < 0 || tp.SelectionEnd < 0 {
+		return time.Time{}, time.Time{}
+	}
+	if tp.SelectionStart >= len(tp.buckets) || tp.SelectionEnd >= len(tp.buckets) {
+		return time.Time{}, time.Time{}
+	}
+	return tp.buckets[tp.SelectionStart].Start, tp.buckets[tp.SelectionEnd].End
+}
+
+// ClearSelection resets the selection range.
+func (tp *TimelinePanel) ClearSelection() {
+	tp.SelectionStart = -1
+	tp.SelectionEnd = -1
+}
+
+// CursorTime returns the time label for the bucket under the cursor.
+func (tp *TimelinePanel) CursorTime() string {
+	if tp.Cursor < len(tp.buckets) {
+		return tp.buckets[tp.Cursor].Start.Format("15:04:05")
+	}
+	return ""
 }
 
 func (tp *TimelinePanel) View(s *store.EventStore) string {
-	barWidth := tp.Width - 26 // leave room for timestamps
-	if barWidth < 10 {
-		barWidth = 10
-	}
+	barWidth := tp.barWidth()
 
-	buckets := s.Timeline(barWidth)
-	if len(buckets) == 0 {
+	// Always show full time range, not just filtered
+	tp.buckets = s.TimelineAll(barWidth)
+	if len(tp.buckets) == 0 {
 		style := styles.PanelStyle.Width(tp.Width - 2)
 		if tp.Focused {
 			style = styles.FocusedPanelStyle.Width(tp.Width - 2)
@@ -34,50 +110,102 @@ func (tp *TimelinePanel) View(s *store.EventStore) string {
 		return style.Render(styles.TitleStyle.Render("Timeline") + "\n(no data)")
 	}
 
+	// Clamp cursor to valid range
+	if tp.Cursor >= len(tp.buckets) {
+		tp.Cursor = len(tp.buckets) - 1
+	}
+
 	maxCount := 0
-	for _, b := range buckets {
+	for _, b := range tp.buckets {
 		if b.Count > maxCount {
 			maxCount = b.Count
 		}
 	}
 
-	barHeight := tp.Height - 4 // title + time labels + border
+	barHeight := tp.Height - 4
 	if barHeight < 3 {
 		barHeight = 3
 	}
 
 	barStyle := lipgloss.NewStyle().Foreground(styles.ColorBar)
+	selectedBarStyle := lipgloss.NewStyle().Foreground(styles.ColorAccent)
+	cursorBarStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
 
 	// Build rows from top to bottom
 	var rows []string
 	for row := barHeight; row >= 1; row-- {
 		threshold := float64(row) / float64(barHeight) * float64(maxCount)
 		var line strings.Builder
-		for _, b := range buckets {
-			if float64(b.Count) >= threshold {
+		for col, b := range tp.buckets {
+			isCursor := col == tp.Cursor && tp.Focused
+			isSelected := tp.inSelection(col)
+			filled := float64(b.Count) >= threshold
+
+			switch {
+			case filled && isCursor:
+				line.WriteString(cursorBarStyle.Render(styles.BarCharFull))
+			case filled && isSelected:
+				line.WriteString(selectedBarStyle.Render(styles.BarCharFull))
+			case filled:
 				line.WriteString(barStyle.Render(styles.BarCharFull))
-			} else {
+			case isCursor:
+				line.WriteString(cursorBarStyle.Render("▏"))
+			case isSelected:
+				line.WriteString(selectedBarStyle.Render("·"))
+			default:
 				line.WriteString(" ")
 			}
 		}
 		rows = append(rows, line.String())
 	}
 
+	// Cursor indicator row
+	var cursorRow strings.Builder
+	for col := range tp.buckets {
+		if col == tp.Cursor && tp.Focused {
+			cursorRow.WriteString(cursorBarStyle.Render("▲"))
+		} else if tp.inSelection(col) {
+			cursorRow.WriteString(selectedBarStyle.Render("─"))
+		} else {
+			cursorRow.WriteString(" ")
+		}
+	}
+	rows = append(rows, cursorRow.String())
+
 	// Time labels
-	startLabel := buckets[0].Start.Format("15:04:05")
-	endLabel := buckets[len(buckets)-1].End.Format("15:04:05")
-	padding := barWidth - len(startLabel) - len(endLabel)
+	startLabel := tp.buckets[0].Start.Format("15:04:05")
+	endLabel := tp.buckets[len(tp.buckets)-1].End.Format("15:04:05")
+	padding := len(tp.buckets) - len(startLabel) - len(endLabel)
 	if padding < 1 {
 		padding = 1
 	}
 	timeRow := startLabel + strings.Repeat(" ", padding) + endLabel
 
+	// Title with context
 	var b strings.Builder
-	b.WriteString(styles.TitleStyle.Render(fmt.Sprintf("Timeline (max: %d/bucket)", maxCount)))
+	titleParts := fmt.Sprintf("Timeline (max: %d/bucket)", maxCount)
+	if tp.Focused {
+		cursorBucket := tp.buckets[tp.Cursor]
+		titleParts += fmt.Sprintf("  cursor: %s (%d events)",
+			cursorBucket.Start.Format("15:04:05"), cursorBucket.Count)
+	}
+	if tp.SelectionStart >= 0 && tp.SelectionEnd >= 0 {
+		s, e := tp.SelectedTimeRange()
+		titleParts += fmt.Sprintf("  selected: %s-%s", s.Format("15:04:05"), e.Format("15:04:05"))
+	} else if tp.SelectionStart >= 0 {
+		titleParts += fmt.Sprintf("  start: %s (press Enter for end)",
+			tp.buckets[tp.SelectionStart].Start.Format("15:04:05"))
+	}
+	b.WriteString(styles.TitleStyle.Render(titleParts))
 	b.WriteString("\n")
 	b.WriteString(strings.Join(rows, "\n"))
 	b.WriteString("\n")
 	b.WriteString(timeRow)
+
+	if tp.Focused {
+		helpText := "  [←→] move  [Enter] mark start/end  [Esc] clear range"
+		b.WriteString(styles.HelpStyle.Render(helpText))
+	}
 
 	style := styles.PanelStyle.Width(tp.Width - 2)
 	if tp.Focused {
@@ -85,4 +213,19 @@ func (tp *TimelinePanel) View(s *store.EventStore) string {
 	}
 
 	return style.Render(b.String())
+}
+
+func (tp *TimelinePanel) inSelection(col int) bool {
+	if tp.SelectionStart < 0 {
+		return false
+	}
+	if tp.SelectionEnd < 0 {
+		// Only start is set — highlight just the start bucket
+		return col == tp.SelectionStart
+	}
+	start, end := tp.SelectionStart, tp.SelectionEnd
+	if start > end {
+		start, end = end, start
+	}
+	return col >= start && col <= end
 }

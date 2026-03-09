@@ -206,6 +206,18 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.moveDown()
 		return m, nil
 
+	case "left", "h":
+		if m.focus == focusTimeline {
+			m.timeline.MoveLeft()
+		}
+		return m, nil
+
+	case "right", "l":
+		if m.focus == focusTimeline {
+			m.timeline.MoveRight()
+		}
+		return m, nil
+
 	case "enter", " ":
 		return m.selectCurrent()
 
@@ -226,7 +238,23 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "esc":
-		m.statusMsg = ""
+		if m.focus == focusTimeline {
+			// Clear time range filter and selection
+			m.timeline.ClearSelection()
+			f := m.store.Filters()
+			if !f.TimeStart.IsZero() || !f.TimeEnd.IsZero() {
+				f.TimeStart = time.Time{}
+				f.TimeEnd = time.Time{}
+				m.store.SetFilters(f)
+				m.eventList.ResetCursor()
+				m.refreshPanels()
+				m.statusMsg = "Time filter cleared"
+			} else {
+				m.statusMsg = "Selection cleared"
+			}
+		} else {
+			m.statusMsg = ""
+		}
 		return m, nil
 	}
 
@@ -332,6 +360,24 @@ func (m Model) selectCurrent() (tea.Model, tea.Cmd) {
 		m.eventList.ResetCursor()
 		m.refreshPanels()
 		m.statusMsg = fmt.Sprintf("Filter: %s = %s (%d results)", fp.Field, val, m.store.FilteredCount())
+	}
+	if m.focus == focusTimeline {
+		if m.timeline.MarkSelection() {
+			// Both start and end are set — apply time filter
+			start, end := m.timeline.SelectedTimeRange()
+			f := m.store.Filters()
+			f.TimeStart = start
+			f.TimeEnd = end
+			m.store.SetFilters(f)
+			m.eventList.ResetCursor()
+			m.refreshPanels()
+			m.statusMsg = fmt.Sprintf("Time filter: %s - %s (%d results)",
+				start.Format("15:04:05"), end.Format("15:04:05"), m.store.FilteredCount())
+		} else {
+			m.statusMsg = fmt.Sprintf("Selection start: %s — move cursor and press Enter to set end",
+				m.timeline.CursorTime())
+		}
+		return m, nil
 	}
 	if m.focus == focusEventList {
 		return m.showDetail()
