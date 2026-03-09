@@ -1,3 +1,6 @@
 *.log
 *.uniq
 *.sorted
+*.log.gz
+kube-audit-log-tool
+audit-export-*.json
