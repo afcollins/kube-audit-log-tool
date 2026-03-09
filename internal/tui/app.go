@@ -223,6 +223,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "c":
 		m.store.ClearFilters()
+		m.timeline.ClearSelection()
 		m.eventList.ResetCursor()
 		m.refreshPanels()
 		m.statusMsg = "Filters cleared"
