@@ -129,7 +129,9 @@ func (tp *TimelinePanel) View(s *store.EventStore) string {
 
 	barStyle := lipgloss.NewStyle().Foreground(styles.ColorBar)
 	selectedBarStyle := lipgloss.NewStyle().Foreground(styles.ColorAccent)
-	cursorBarStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
+	cursorBarStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FFFFFF")).
+		Background(styles.ColorPrimary)
 
 	// Build rows from top to bottom
 	var rows []string
@@ -149,7 +151,7 @@ func (tp *TimelinePanel) View(s *store.EventStore) string {
 			case filled:
 				line.WriteString(barStyle.Render(styles.BarCharFull))
 			case isCursor:
-				line.WriteString(cursorBarStyle.Render("▏"))
+				line.WriteString(cursorBarStyle.Render(" "))
 			case isSelected:
 				line.WriteString(selectedBarStyle.Render("·"))
 			default:
