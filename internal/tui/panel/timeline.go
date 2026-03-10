@@ -28,8 +28,9 @@ func NewTimelinePanel() *TimelinePanel {
 	}
 }
 
-func (tp *TimelinePanel) barWidth() int {
-	w := tp.Width - 26
+// contentWidth returns the usable character width inside the panel border+padding.
+func (tp *TimelinePanel) contentWidth() int {
+	w := tp.Width - 4 // 2 border + 2 padding
 	if w < 10 {
 		w = 10
 	}
@@ -98,10 +99,10 @@ func (tp *TimelinePanel) CursorTime() string {
 }
 
 func (tp *TimelinePanel) View(s *store.EventStore) string {
-	barWidth := tp.barWidth()
+	cw := tp.contentWidth()
 
 	// Show filtered events so timeline reflects active filters
-	tp.buckets = s.Timeline(barWidth)
+	tp.buckets = s.Timeline(cw)
 	if len(tp.buckets) == 0 {
 		style := styles.PanelStyle.Width(tp.Width - 2)
 		if tp.Focused {
@@ -174,14 +175,14 @@ func (tp *TimelinePanel) View(s *store.EventStore) string {
 	}
 	rows = append(rows, cursorRow.String())
 
-	// Time labels
+	// Time labels — align to content width
 	startLabel := tp.buckets[0].Start.Format("15:04:05")
 	endLabel := tp.buckets[len(tp.buckets)-1].End.Format("15:04:05")
-	padding := len(tp.buckets) - len(startLabel) - len(endLabel)
-	if padding < 1 {
-		padding = 1
+	timePadding := cw - len(startLabel) - len(endLabel)
+	if timePadding < 1 {
+		timePadding = 1
 	}
-	timeRow := startLabel + strings.Repeat(" ", padding) + endLabel
+	timeRow := startLabel + strings.Repeat(" ", timePadding) + endLabel
 
 	// Title with context
 	var b strings.Builder
@@ -203,10 +204,9 @@ func (tp *TimelinePanel) View(s *store.EventStore) string {
 	b.WriteString(strings.Join(rows, "\n"))
 	b.WriteString("\n")
 	b.WriteString(timeRow)
-
 	if tp.Focused {
-		helpText := "  [←→] move  [Enter] mark start/end  [Esc] clear range"
-		b.WriteString(styles.HelpStyle.Render(helpText))
+		b.WriteString("\n")
+		b.WriteString(styles.HelpStyle.Render("[←→] move  [Enter] mark start/end  [Esc] clear range"))
 	}
 
 	style := styles.PanelStyle.Width(tp.Width - 2)
