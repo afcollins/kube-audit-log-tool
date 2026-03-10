@@ -17,7 +17,8 @@ type TimelinePanel struct {
 	Cursor     int
 	SelectionStart int // -1 means no selection started
 	SelectionEnd   int // -1 means no selection ended
-	buckets    []store.TimelineBucket
+	buckets        []store.TimelineBucket
+	lastBucketSig  string // tracks whether bucket data changed between renders
 }
 
 func NewTimelinePanel() *TimelinePanel {
@@ -114,6 +115,14 @@ func (tp *TimelinePanel) View(s *store.EventStore) string {
 	// Clamp cursor to valid range
 	if tp.Cursor >= len(tp.buckets) {
 		tp.Cursor = len(tp.buckets) - 1
+	}
+
+	// Clear stale selection when bucket data changes (e.g., after filter applied)
+	sig := tp.bucketSignature()
+	if sig != tp.lastBucketSig {
+		tp.SelectionStart = -1
+		tp.SelectionEnd = -1
+		tp.lastBucketSig = sig
 	}
 
 	maxCount := 0
@@ -215,6 +224,17 @@ func (tp *TimelinePanel) View(s *store.EventStore) string {
 	}
 
 	return style.Render(b.String())
+}
+
+func (tp *TimelinePanel) bucketSignature() string {
+	if len(tp.buckets) == 0 {
+		return ""
+	}
+	first := tp.buckets[0]
+	last := tp.buckets[len(tp.buckets)-1]
+	return fmt.Sprintf("%d:%s:%s", len(tp.buckets),
+		first.Start.Format(time.RFC3339Nano),
+		last.End.Format(time.RFC3339Nano))
 }
 
 func (tp *TimelinePanel) inSelection(col int) bool {

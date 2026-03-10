@@ -57,7 +57,7 @@ var (
 // Panel size defaults. Change these to adjust the dashboard layout.
 const (
 	FacetPanelHeight    = 14
-	TimelinePanelHeight = 8
+	TimelinePanelHeight = 14
 	FilterBarHeight     = 2
 	StatusBarHeight     = 2
 )
