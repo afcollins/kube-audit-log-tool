@@ -440,18 +440,17 @@ func (m *Model) updateSizes() {
 	if facetWidth < 18 {
 		facetWidth = m.width / 3
 	}
-	facetHeight := 14
-
 	for _, fp := range m.facets {
 		fp.Width = facetWidth
-		fp.Height = facetHeight
+		fp.Height = styles.FacetPanelHeight
 	}
 
 	m.filterBar.Width = m.width
 	m.timeline.Width = m.width
+	m.timeline.Height = styles.TimelinePanelHeight
 	m.eventList.Width = m.width
 
-	remaining := m.height - facetHeight - 2 - 8 - 2 // filterbar + facets + timeline + status
+	remaining := m.height - styles.FacetPanelHeight - styles.FilterBarHeight - styles.TimelinePanelHeight - styles.StatusBarHeight
 	if remaining < 5 {
 		remaining = 5
 	}

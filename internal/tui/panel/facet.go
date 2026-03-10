@@ -25,10 +25,10 @@ type FacetPanel struct {
 
 func NewFacetPanel(title, field string) *FacetPanel {
 	return &FacetPanel{
-		Title: title,
-		Field: field,
-		Width: 20,
-		Height: 12,
+		Title:  title,
+		Field:  field,
+		Width:  20,
+		Height: styles.FacetPanelHeight,
 	}
 }
 
