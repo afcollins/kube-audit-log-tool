@@ -24,17 +24,20 @@ const (
 	stateDashboard
 )
 
-// Focus panels: 0-5 = facet panels, 6 = timeline, 7 = event list
+// Focus panels: 0-3 = primary facets, 4-5 = secondary facets, 6 = timeline, 7 = event list
 const (
 	focusVerb      = 0
 	focusResource  = 1
 	focusUsername   = 2
-	focusStatus    = 3
-	focusSourceIP  = 4
-	focusUserAgent = 5
+	focusUserAgent = 3
+	focusStatus    = 4
+	focusSourceIP  = 5
 	focusTimeline  = 6
 	focusEventList = 7
-	focusCount     = 8
+
+	primaryFacetCount   = 4
+	secondaryFacetStart = 4
+	totalFacetCount     = 6
 )
 
 type Model struct {
@@ -48,12 +51,13 @@ type Model struct {
 	statusMsg  string
 	exportPath string
 
-	filePicker  *panel.FilePickerPanel
-	filterBar   *panel.FilterBar
-	facets      [6]*panel.FacetPanel
-	timeline    *panel.TimelinePanel
-	eventList   *panel.EventListPanel
-	eventDetail *panel.EventDetailPanel
+	filePicker     *panel.FilePickerPanel
+	filterBar      *panel.FilterBar
+	facets         [6]*panel.FacetPanel
+	showSecondary  bool
+	timeline       *panel.TimelinePanel
+	eventList      *panel.EventListPanel
+	eventDetail    *panel.EventDetailPanel
 
 	loadedCount int
 	loadStart   time.Time
@@ -81,9 +85,9 @@ func NewModel(files []string) Model {
 			panel.NewFacetPanel("Verb", "verb"),
 			panel.NewFacetPanel("Resource", "resource"),
 			panel.NewFacetPanel("User", "username"),
-			panel.NewFacetPanel("Status", "status"),
-			panel.NewFacetPanel("Source IP", "sourceip"),
 			panel.NewFacetPanel("User Agent", "useragent"),
+			panel.NewFacetPanel("Status", "status"),       // secondary
+			panel.NewFacetPanel("Source IP", "sourceip"),   // secondary
 		},
 		timeline:    panel.NewTimelinePanel(),
 		eventList:   panel.NewEventListPanel(),
@@ -191,11 +195,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case "tab":
-		m.setFocus((m.focus + 1) % focusCount)
+		m.focusNext()
 		return m, nil
 
 	case "shift+tab":
-		m.setFocus((m.focus - 1 + focusCount) % focusCount)
+		m.focusPrev()
 		return m, nil
 
 	case "up", "k":
@@ -227,6 +231,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.eventList.ResetCursor()
 		m.refreshPanels()
 		m.statusMsg = "Filters cleared"
+		return m, nil
+
+	case "f":
+		m.showSecondary = !m.showSecondary
+		if !m.showSecondary && m.focus >= secondaryFacetStart && m.focus < totalFacetCount {
+			m.setFocus(focusVerb)
+		}
+		m.updateSizes()
 		return m, nil
 
 	case "e":
@@ -305,7 +317,7 @@ func (m Model) handleFilePickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) setFocus(idx int) {
 	// Clear old focus
-	if m.focus >= 0 && m.focus <= 5 {
+	if m.focus >= 0 && m.focus < totalFacetCount {
 		m.facets[m.focus].Focused = false
 	}
 	if m.focus == focusTimeline {
@@ -318,7 +330,7 @@ func (m *Model) setFocus(idx int) {
 	m.focus = idx
 
 	// Set new focus
-	if idx >= 0 && idx <= 5 {
+	if idx >= 0 && idx < totalFacetCount {
 		m.facets[idx].Focused = true
 	}
 	if idx == focusTimeline {
@@ -327,6 +339,35 @@ func (m *Model) setFocus(idx int) {
 	if idx == focusEventList {
 		m.eventList.Focused = true
 	}
+}
+
+func (m *Model) isFocusable(idx int) bool {
+	if idx >= secondaryFacetStart && idx < totalFacetCount && !m.showSecondary {
+		return false
+	}
+	return true
+}
+
+func (m *Model) focusNext() {
+	next := m.focus
+	for {
+		next = (next + 1) % (focusEventList + 1)
+		if m.isFocusable(next) {
+			break
+		}
+	}
+	m.setFocus(next)
+}
+
+func (m *Model) focusPrev() {
+	prev := m.focus
+	for {
+		prev = (prev - 1 + focusEventList + 1) % (focusEventList + 1)
+		if m.isFocusable(prev) {
+			break
+		}
+	}
+	m.setFocus(prev)
 }
 
 func (m *Model) moveUp() {
@@ -435,14 +476,18 @@ func (m *Model) refreshPanels() {
 }
 
 func (m *Model) updateSizes() {
-	// Facet panel widths
-	facetWidth := m.width / 6
-	if facetWidth < 18 {
-		facetWidth = m.width / 3
+	// Primary facets: 4 panels across
+	primaryWidth := m.width / primaryFacetCount
+	for i := 0; i < primaryFacetCount; i++ {
+		m.facets[i].Width = primaryWidth
+		m.facets[i].Height = styles.FacetPanelHeight
 	}
-	for _, fp := range m.facets {
-		fp.Width = facetWidth
-		fp.Height = styles.FacetPanelHeight
+
+	// Secondary facets: 2 panels across
+	secondaryWidth := m.width / (totalFacetCount - primaryFacetCount)
+	for i := secondaryFacetStart; i < totalFacetCount; i++ {
+		m.facets[i].Width = secondaryWidth
+		m.facets[i].Height = styles.FacetPanelHeight
 	}
 
 	m.filterBar.Width = m.width
@@ -450,7 +495,11 @@ func (m *Model) updateSizes() {
 	m.timeline.Height = styles.TimelinePanelHeight
 	m.eventList.Width = m.width
 
-	remaining := m.height - styles.FacetPanelHeight - styles.FilterBarHeight - styles.TimelinePanelHeight - styles.StatusBarHeight
+	facetRows := 1
+	if m.showSecondary {
+		facetRows = 2
+	}
+	remaining := m.height - (styles.FacetPanelHeight * facetRows) - styles.FilterBarHeight - styles.TimelinePanelHeight - styles.StatusBarHeight
 	if remaining < 5 {
 		remaining = 5
 	}
@@ -499,23 +548,18 @@ func (m Model) dashboardView() string {
 	// Filter bar
 	sections = append(sections, m.filterBar.View(m.store))
 
-	// Facet panels row
-	facetWidth := m.width / 6
-	if facetWidth < 18 {
-		// 2 rows of 3
-		row1 := lipgloss.JoinHorizontal(lipgloss.Top,
-			m.facets[0].View(), m.facets[1].View(), m.facets[2].View(),
+	// Primary facet panels row
+	primaryRow := lipgloss.JoinHorizontal(lipgloss.Top,
+		m.facets[0].View(), m.facets[1].View(), m.facets[2].View(), m.facets[3].View(),
+	)
+	sections = append(sections, primaryRow)
+
+	// Secondary facet panels row (toggle with 'f')
+	if m.showSecondary {
+		secondaryRow := lipgloss.JoinHorizontal(lipgloss.Top,
+			m.facets[4].View(), m.facets[5].View(),
 		)
-		row2 := lipgloss.JoinHorizontal(lipgloss.Top,
-			m.facets[3].View(), m.facets[4].View(), m.facets[5].View(),
-		)
-		sections = append(sections, row1, row2)
-	} else {
-		row := lipgloss.JoinHorizontal(lipgloss.Top,
-			m.facets[0].View(), m.facets[1].View(), m.facets[2].View(),
-			m.facets[3].View(), m.facets[4].View(), m.facets[5].View(),
-		)
-		sections = append(sections, row)
+		sections = append(sections, secondaryRow)
 	}
 
 	// Timeline
@@ -526,7 +570,7 @@ func (m Model) dashboardView() string {
 
 	// Status bar
 	help := styles.HelpStyle.Render(
-		"[Tab] focus  [↑↓] navigate  [Enter/Space] filter  [d] detail  [e] export  [c] clear  [q] quit",
+		"[Tab] focus  [↑↓] navigate  [Enter/Space] filter  [f] more facets  [d] detail  [e] export  [c] clear  [q] quit",
 	)
 	status := ""
 	if m.statusMsg != "" {
