@@ -267,8 +267,14 @@ func (m Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc", "q":
 		m.eventDetail.Hide()
 	case "up", "k":
-		m.eventDetail.ScrollUp()
+		m.eventList.MoveUp()
+		return m.showDetail()
 	case "down", "j":
+		m.eventList.MoveDown(m.store.FilteredCount())
+		return m.showDetail()
+	case "left", "h":
+		m.eventDetail.ScrollUp()
+	case "right", "l":
 		m.eventDetail.ScrollDown()
 	case "r":
 		m.eventDetail.ToggleRaw()

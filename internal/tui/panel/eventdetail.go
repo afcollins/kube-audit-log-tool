@@ -28,7 +28,6 @@ func (ed *EventDetailPanel) Show(summary string, rawJSON []byte) {
 	ed.Visible = true
 	ed.Scroll = 0
 	ed.Content = summary
-	ed.ShowingRaw = false
 
 	// Pretty-print JSON
 	var prettyBuf bytes.Buffer
@@ -99,7 +98,7 @@ func (ed *EventDetailPanel) View() string {
 	if ed.ShowingRaw {
 		mode = "Raw JSON"
 	}
-	b.WriteString(styles.TitleStyle.Render("Event Detail ["+mode+"]") + "  [r]aw toggle  [Esc] close\n\n")
+	b.WriteString(styles.TitleStyle.Render("Event Detail ["+mode+"]") + "  [↑↓] prev/next  [←→] scroll  [r]aw toggle  [Esc] close\n\n")
 
 	visibleLines := modalHeight - 4
 	end := ed.Scroll + visibleLines
