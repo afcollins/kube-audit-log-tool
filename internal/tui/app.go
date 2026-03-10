@@ -344,23 +344,38 @@ func (m *Model) moveDown() {
 func (m Model) selectCurrent() (tea.Model, tea.Cmd) {
 	if m.focus >= 0 && m.focus <= 5 {
 		fp := m.facets[m.focus]
-		val := fp.SelectedValue()
-		if val == "" {
-			return m, nil
-		}
 
-		if fp.Field == "status" {
-			code, err := strconv.Atoi(val)
-			if err == nil {
-				m.store.ToggleStatusFilter(code)
+		if fp.Selected != "" {
+			// Panel has an active filter — clear it
+			if fp.Field == "status" {
+				code, err := strconv.Atoi(fp.Selected)
+				if err == nil {
+					m.store.ToggleStatusFilter(code)
+				}
+			} else {
+				m.store.ToggleFilter(fp.Field, fp.Selected)
 			}
+			m.eventList.ResetCursor()
+			m.refreshPanels()
+			m.statusMsg = fmt.Sprintf("Cleared filter: %s (%d results)", fp.Field, m.store.FilteredCount())
 		} else {
-			m.store.ToggleFilter(fp.Field, val)
+			// No active filter — apply the value under cursor
+			val := fp.SelectedValue()
+			if val == "" {
+				return m, nil
+			}
+			if fp.Field == "status" {
+				code, err := strconv.Atoi(val)
+				if err == nil {
+					m.store.ToggleStatusFilter(code)
+				}
+			} else {
+				m.store.ToggleFilter(fp.Field, val)
+			}
+			m.eventList.ResetCursor()
+			m.refreshPanels()
+			m.statusMsg = fmt.Sprintf("Filter: %s = %s (%d results)", fp.Field, val, m.store.FilteredCount())
 		}
-
-		m.eventList.ResetCursor()
-		m.refreshPanels()
-		m.statusMsg = fmt.Sprintf("Filter: %s = %s (%d results)", fp.Field, val, m.store.FilteredCount())
 	}
 	if m.focus == focusTimeline {
 		if m.timeline.MarkSelection() {
