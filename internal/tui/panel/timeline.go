@@ -100,8 +100,8 @@ func (tp *TimelinePanel) CursorTime() string {
 func (tp *TimelinePanel) View(s *store.EventStore) string {
 	barWidth := tp.barWidth()
 
-	// Always show full time range, not just filtered
-	tp.buckets = s.TimelineAll(barWidth)
+	// Show filtered events so timeline reflects active filters
+	tp.buckets = s.Timeline(barWidth)
 	if len(tp.buckets) == 0 {
 		style := styles.PanelStyle.Width(tp.Width - 2)
 		if tp.Focused {
