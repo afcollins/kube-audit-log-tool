@@ -21,6 +21,7 @@ type FacetPanel struct {
 	Height   int
 	Scroll   int
 	Selected string // currently filtered value
+	MaxItems int    // override DefaultTopN when set (e.g. maximized view)
 }
 
 func NewFacetPanel(title, field string) *FacetPanel {
@@ -33,7 +34,11 @@ func NewFacetPanel(title, field string) *FacetPanel {
 }
 
 func (p *FacetPanel) Update(s *store.EventStore) {
-	p.Items = s.TopN(p.Field, DefaultTopN)
+	topN := DefaultTopN
+	if p.MaxItems > 0 {
+		topN = p.MaxItems
+	}
+	p.Items = s.TopN(p.Field, topN)
 	// Determine if this field has an active filter
 	f := s.Filters()
 	switch p.Field {

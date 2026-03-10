@@ -55,6 +55,7 @@ type Model struct {
 	filterBar      *panel.FilterBar
 	facets         [6]*panel.FacetPanel
 	showSecondary  bool
+	maximized      bool
 	timeline       *panel.TimelinePanel
 	eventList      *panel.EventListPanel
 	eventDetail    *panel.EventDetailPanel
@@ -244,6 +245,22 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "e":
 		return m, m.exportFiltered()
 
+	case "m":
+		if m.focus >= 0 && m.focus < totalFacetCount {
+			m.maximized = !m.maximized
+		} else if m.maximized {
+			m.maximized = false
+		}
+		if !m.maximized {
+			// Reset MaxItems and restore normal sizes
+			for _, fp := range m.facets {
+				fp.MaxItems = 0
+			}
+			m.updateSizes()
+			m.refreshPanels()
+		}
+		return m, nil
+
 	case "d":
 		if m.focus == focusEventList {
 			return m.showDetail()
@@ -251,6 +268,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "esc":
+		if m.maximized {
+			m.maximized = false
+			for _, fp := range m.facets {
+				fp.MaxItems = 0
+			}
+			m.updateSizes()
+			m.refreshPanels()
+			return m, nil
+		}
 		if m.focus == focusTimeline {
 			// Clear time range filter and selection
 			m.timeline.ClearSelection()
@@ -543,6 +569,17 @@ func (m Model) View() string {
 }
 
 func (m Model) dashboardView() string {
+	// Maximized facet panel — render full screen
+	if m.maximized && m.focus >= 0 && m.focus < totalFacetCount {
+		fp := m.facets[m.focus]
+		fp.Width = m.width
+		fp.Height = m.height - styles.StatusBarHeight
+		fp.MaxItems = (fp.Height - 3) // fill the panel
+		fp.Update(m.store)
+		help := styles.HelpStyle.Render("[m/Esc] restore  [↑↓] navigate  [Enter/Space] filter  [q] quit")
+		return fp.View() + "\n" + help
+	}
+
 	var sections []string
 
 	// Filter bar
@@ -570,7 +607,7 @@ func (m Model) dashboardView() string {
 
 	// Status bar
 	help := styles.HelpStyle.Render(
-		"[Tab] focus  [↑↓] navigate  [Enter/Space] filter  [f] more facets  [d] detail  [e] export  [c] clear  [q] quit",
+		"[Tab] focus  [↑↓] navigate  [Enter/Space] filter  [f] more facets  [m] maximize  [d] detail  [e] export  [c] clear  [q] quit",
 	)
 	status := ""
 	if m.statusMsg != "" {
