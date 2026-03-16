@@ -10,6 +10,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// TimelineSource provides timeline data. Implemented by both EventStore and MetricStore.
+type TimelineSource interface {
+	Timeline(buckets int) []store.TimelineBucket
+}
+
 type TimelinePanel struct {
 	Width      int
 	Height     int
@@ -99,7 +104,7 @@ func (tp *TimelinePanel) CursorTime() string {
 	return ""
 }
 
-func (tp *TimelinePanel) View(s *store.EventStore) string {
+func (tp *TimelinePanel) View(s TimelineSource) string {
 	cw := tp.contentWidth()
 
 	// Show filtered events so timeline reflects active filters

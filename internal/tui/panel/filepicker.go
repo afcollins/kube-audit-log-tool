@@ -45,7 +45,8 @@ func (fp *FilePickerPanel) Refresh() {
 			continue
 		}
 		name := e.Name()
-		if strings.HasSuffix(name, ".log") || strings.HasSuffix(name, ".log.gz") {
+		if strings.HasSuffix(name, ".log") || strings.HasSuffix(name, ".log.gz") ||
+			strings.HasSuffix(name, ".json") || strings.HasSuffix(name, ".json.gz") {
 			fp.Files = append(fp.Files, name)
 		}
 	}
@@ -94,7 +95,7 @@ func (fp *FilePickerPanel) SelectedPaths() []string {
 func (fp *FilePickerPanel) View() string {
 	var b strings.Builder
 
-	b.WriteString(styles.TitleStyle.Render("Select audit log files"))
+	b.WriteString(styles.TitleStyle.Render("Select audit log or metrics files"))
 	b.WriteString("\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 		fmt.Sprintf("Dir: %s", fp.Dir)))
@@ -132,7 +133,7 @@ func (fp *FilePickerPanel) View() string {
 
 	if len(fp.Files) == 0 {
 		b.WriteString(lipgloss.NewStyle().Foreground(styles.ColorDanger).Render(
-			"No .log or .log.gz files found in current directory"))
+			"No .log, .log.gz, .json, or .json.gz files found in current directory"))
 	}
 
 	sel := len(fp.Selected)

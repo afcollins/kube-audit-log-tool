@@ -10,8 +10,9 @@ import (
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [flags] [file1.log file2.log.gz ...]\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Interactive TUI for exploring Kubernetes audit log events.\n")
+		fmt.Fprintf(os.Stderr, "Usage: %s [flags] [file1.log file2.json ...]\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Interactive TUI for exploring Kubernetes audit logs and metrics.\n")
+		fmt.Fprintf(os.Stderr, "Supports .log, .log.gz (audit), .json, .json.gz (metrics).\n")
 		fmt.Fprintf(os.Stderr, "If no files are provided, a file picker will be shown.\n\n")
 		flag.PrintDefaults()
 	}

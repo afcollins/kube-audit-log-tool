@@ -11,6 +11,12 @@ import (
 
 const DefaultTopN = 15
 
+// FacetSource provides data for facet panels. Implemented by both EventStore and MetricStore.
+type FacetSource interface {
+	TopN(field string, n int) []store.FacetCount
+	FilterValue(field string) string
+}
+
 type FacetPanel struct {
 	Title    string
 	Field    string // store field name: "verb", "resource", "username", "status", "sourceip", "useragent"
@@ -33,34 +39,13 @@ func NewFacetPanel(title, field string) *FacetPanel {
 	}
 }
 
-func (p *FacetPanel) Update(s *store.EventStore) {
+func (p *FacetPanel) Update(s FacetSource) {
 	topN := DefaultTopN
 	if p.MaxItems > 0 {
 		topN = p.MaxItems
 	}
 	p.Items = s.TopN(p.Field, topN)
-	// Determine if this field has an active filter
-	f := s.Filters()
-	switch p.Field {
-	case "verb":
-		p.Selected = f.Verb
-	case "resource":
-		p.Selected = f.Resource
-	case "namespace":
-		p.Selected = f.Namespace
-	case "username":
-		p.Selected = f.Username
-	case "sourceip":
-		p.Selected = f.SourceIP
-	case "useragent":
-		p.Selected = f.UserAgent
-	case "status":
-		if f.StatusCode != 0 {
-			p.Selected = fmt.Sprintf("%d", f.StatusCode)
-		} else {
-			p.Selected = ""
-		}
-	}
+	p.Selected = s.FilterValue(p.Field)
 }
 
 func (p *FacetPanel) MoveUp() {

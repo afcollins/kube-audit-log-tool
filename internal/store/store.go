@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
@@ -255,6 +256,30 @@ func (s *EventStore) matchesFilters(i int) bool {
 		return false
 	}
 	return true
+}
+
+// FilterValue returns the active filter value for a given field, or "" if none.
+func (s *EventStore) FilterValue(field string) string {
+	switch field {
+	case "verb":
+		return s.filters.Verb
+	case "resource":
+		return s.filters.Resource
+	case "namespace":
+		return s.filters.Namespace
+	case "username":
+		return s.filters.Username
+	case "sourceip":
+		return s.filters.SourceIP
+	case "useragent":
+		return s.filters.UserAgent
+	case "status":
+		if s.filters.StatusCode != 0 {
+			return fmt.Sprintf("%d", s.filters.StatusCode)
+		}
+		return ""
+	}
+	return ""
 }
 
 // Filtered returns the current filtered event indices.

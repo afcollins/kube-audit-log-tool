@@ -12,17 +12,22 @@ type TimelineBucket struct {
 	Count int
 }
 
-// BuildTimeline creates time-bucketed histogram data from filtered events.
-// It auto-selects bucket size to produce roughly targetBuckets buckets.
+// BuildTimeline creates time-bucketed histogram data from audit events.
 func BuildTimeline(events []audit.AuditEvent, indices []int, targetBuckets int) []TimelineBucket {
+	return BuildTimelineFunc(func(i int) time.Time { return events[i].Timestamp }, indices, targetBuckets)
+}
+
+// BuildTimelineFunc creates time-bucketed histogram data using a timestamp accessor.
+// This allows reuse across different event types (audit events, metrics, etc.).
+func BuildTimelineFunc(timestamp func(i int) time.Time, indices []int, targetBuckets int) []TimelineBucket {
 	if len(indices) == 0 {
 		return nil
 	}
 
-	minT := events[indices[0]].Timestamp
-	maxT := events[indices[0]].Timestamp
+	minT := timestamp(indices[0])
+	maxT := timestamp(indices[0])
 	for _, i := range indices {
-		t := events[i].Timestamp
+		t := timestamp(i)
 		if t.Before(minT) {
 			minT = t
 		}
@@ -53,7 +58,7 @@ func BuildTimeline(events []audit.AuditEvent, indices []int, targetBuckets int) 
 	}
 
 	for _, idx := range indices {
-		t := events[idx].Timestamp
+		t := timestamp(idx)
 		bi := int(t.Sub(minT) / bucketSize)
 		if bi >= numBuckets {
 			bi = numBuckets - 1
