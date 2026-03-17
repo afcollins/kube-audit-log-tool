@@ -12,11 +12,12 @@ import (
 )
 
 type MetricListPanel struct {
-	Width   int
-	Height  int
-	Focused bool
-	Cursor  int
-	Scroll  int
+	Width    int
+	Height   int
+	Focused  bool
+	Cursor   int
+	Scroll   int
+	colCache columnWidthCache
 }
 
 func NewMetricListPanel() *MetricListPanel {
@@ -81,9 +82,34 @@ func (ml *MetricListPanel) View(s *mstore.MetricStore) string {
 	if len(indices) == 0 {
 		b.WriteString(lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("(no matching metrics)"))
 	} else {
+		headers := []string{"TIME", "METRIC", "VALUE", "NAMESPACE", "NODE", "POD"}
+		events := s.Events
+
+		// Pre-compute stable column widths from all data
+		colWidths := ml.colCache.computeColumnWidths(headers, func(col int) []string {
+			vals := make([]string, len(events))
+			for i := range events {
+				switch col {
+				case 0:
+					vals[i] = events[i].Timestamp.Format("15:04:05")
+				case 1:
+					vals[i] = events[i].MetricName
+				case 2:
+					vals[i] = fmt.Sprintf("%.4g", events[i].Value)
+				case 3:
+					vals[i] = events[i].Labels["namespace"]
+				case 4:
+					vals[i] = events[i].Labels["node"]
+				case 5:
+					vals[i] = events[i].Labels["pod"]
+				}
+			}
+			return vals
+		}, contentWidth, len(events))
+
 		rows := make([][]string, 0, end-ml.Scroll)
 		for i := ml.Scroll; i < end; i++ {
-			e := &s.Events[indices[i]]
+			e := &events[indices[i]]
 			rows = append(rows, []string{
 				e.Timestamp.Format("15:04:05"),
 				e.MetricName,
@@ -98,18 +124,22 @@ func (ml *MetricListPanel) View(s *mstore.MetricStore) string {
 		cursor := ml.Cursor
 		focused := ml.Focused
 
-		t := newListTable(contentWidth).
-			Headers("TIME", "METRIC", "VALUE", "NAMESPACE", "NODE", "POD").
+		t := newListTable().
+			Headers(headers...).
 			Rows(rows...).
 			StyleFunc(func(row, col int) lipgloss.Style {
+				var base lipgloss.Style
 				if row == table.HeaderRow {
-					return listHeaderStyle()
+					base = listHeaderStyle()
+				} else {
+					actualIdx := scroll + row
+					if actualIdx == cursor && focused {
+						base = listSelectedStyle()
+					} else {
+						base = listCellStyle()
+					}
 				}
-				actualIdx := scroll + row
-				if actualIdx == cursor && focused {
-					return listSelectedStyle()
-				}
-				return listCellStyle()
+				return listStyleWithWidth(base, colWidths, col)
 			})
 
 		b.WriteString(t.Render())

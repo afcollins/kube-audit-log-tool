@@ -17,6 +17,7 @@ type EventListPanel struct {
 	Focused bool
 	Cursor  int
 	Scroll  int
+	colCache columnWidthCache
 }
 
 func NewEventListPanel() *EventListPanel {
@@ -81,9 +82,34 @@ func (el *EventListPanel) View(s *store.EventStore) string {
 	if len(indices) == 0 {
 		b.WriteString(lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("(no matching events)"))
 	} else {
+		headers := []string{"TIME", "VERB", "RESOURCE", "NAMESPACE", "USER", "CODE"}
+		events := s.Events
+
+		// Pre-compute stable column widths from all data
+		colWidths := el.colCache.computeColumnWidths(headers, func(col int) []string {
+			vals := make([]string, len(events))
+			for i := range events {
+				switch col {
+				case 0:
+					vals[i] = events[i].Timestamp.Format("15:04:05")
+				case 1:
+					vals[i] = events[i].Verb
+				case 2:
+					vals[i] = events[i].Resource
+				case 3:
+					vals[i] = events[i].Namespace
+				case 4:
+					vals[i] = events[i].Username
+				case 5:
+					vals[i] = fmt.Sprintf("%d", events[i].StatusCode)
+				}
+			}
+			return vals
+		}, contentWidth, len(events))
+
 		rows := make([][]string, 0, end-el.Scroll)
 		for i := el.Scroll; i < end; i++ {
-			e := &s.Events[indices[i]]
+			e := &events[indices[i]]
 			rows = append(rows, []string{
 				e.Timestamp.Format("15:04:05"),
 				e.Verb,
@@ -97,27 +123,31 @@ func (el *EventListPanel) View(s *store.EventStore) string {
 		scroll := el.Scroll
 		cursor := el.Cursor
 		focused := el.Focused
-		events := s.Events
 		filteredIndices := indices
 
-		t := newListTable(contentWidth).
-			Headers("TIME", "VERB", "RESOURCE", "NAMESPACE", "USER", "CODE").
+		t := newListTable().
+			Headers(headers...).
 			Rows(rows...).
 			StyleFunc(func(row, col int) lipgloss.Style {
+				var base lipgloss.Style
 				if row == table.HeaderRow {
-					return listHeaderStyle()
-				}
-				actualIdx := scroll + row
-				if actualIdx == cursor && focused {
-					return listSelectedStyle()
-				}
-				if actualIdx < len(filteredIndices) {
-					e := &events[filteredIndices[actualIdx]]
-					if e.StatusCode >= 400 {
-						return listDangerStyle()
+					base = listHeaderStyle()
+				} else {
+					actualIdx := scroll + row
+					if actualIdx == cursor && focused {
+						base = listSelectedStyle()
+					} else if actualIdx < len(filteredIndices) {
+						e := &events[filteredIndices[actualIdx]]
+						if e.StatusCode >= 400 {
+							base = listDangerStyle()
+						} else {
+							base = listCellStyle()
+						}
+					} else {
+						base = listCellStyle()
 					}
 				}
-				return listCellStyle()
+				return listStyleWithWidth(base, colWidths, col)
 			})
 
 		b.WriteString(t.Render())
