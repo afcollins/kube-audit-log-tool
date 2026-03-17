@@ -12,11 +12,11 @@ import (
 )
 
 type EventListPanel struct {
-	Width   int
-	Height  int
-	Focused bool
-	Cursor  int
-	Scroll  int
+	Width    int
+	Height   int
+	Focused  bool
+	Cursor   int
+	Scroll   int
 	colCache columnWidthCache
 }
 

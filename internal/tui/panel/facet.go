@@ -28,6 +28,9 @@ type FacetPanel struct {
 	Scroll   int
 	Selected string // currently filtered value
 	MaxItems int    // override DefaultTopN when set (e.g. maximized view)
+
+	Searching   bool   // true when search input is active
+	SearchQuery string // current search substring
 }
 
 func NewFacetPanel(title, field string) *FacetPanel {
@@ -44,21 +47,27 @@ func (p *FacetPanel) Update(s FacetSource) {
 	if p.MaxItems > 0 {
 		topN = p.MaxItems
 	}
+	if p.SearchQuery != "" {
+		topN = 0 // fetch all values when searching
+	}
 	p.Items = s.TopN(p.Field, topN)
 	p.Selected = s.FilterValue(p.Field)
 }
 
 func (p *FacetPanel) MoveUp() {
+	items := p.filteredItems()
 	if p.Cursor > 0 {
 		p.Cursor--
 		if p.Cursor < p.Scroll {
 			p.Scroll = p.Cursor
 		}
 	}
+	_ = items
 }
 
 func (p *FacetPanel) MoveDown() {
-	if p.Cursor < len(p.Items)-1 {
+	items := p.filteredItems()
+	if p.Cursor < len(items)-1 {
 		p.Cursor++
 		visibleLines := p.visibleLines()
 		if p.Cursor >= p.Scroll+visibleLines {
@@ -68,14 +77,88 @@ func (p *FacetPanel) MoveDown() {
 }
 
 func (p *FacetPanel) visibleLines() int {
-	return p.Height - 3 // title + border padding
+	h := p.Height - 3 // title + border padding
+	if p.Searching {
+		h-- // search input row
+	}
+	return h
 }
 
 func (p *FacetPanel) SelectedValue() string {
-	if p.Cursor < len(p.Items) {
-		return p.Items[p.Cursor].Value
+	items := p.filteredItems()
+	if p.Cursor < len(items) {
+		return items[p.Cursor].Value
 	}
 	return ""
+}
+
+// StartSearch enters search mode.
+func (p *FacetPanel) StartSearch() {
+	p.Searching = true
+	p.SearchQuery = ""
+	p.Cursor = 0
+	p.Scroll = 0
+}
+
+// StopSearch exits search mode, keeping the current query as a filter.
+func (p *FacetPanel) StopSearch() {
+	p.Searching = false
+}
+
+// ClearSearch exits search mode and clears the query.
+func (p *FacetPanel) ClearSearch() {
+	p.Searching = false
+	p.SearchQuery = ""
+	p.Cursor = 0
+	p.Scroll = 0
+}
+
+// HandleSearchKey processes a key during search mode. Returns true if the key
+// was consumed (callers should not process it further).
+func (p *FacetPanel) HandleSearchKey(key string) bool {
+	switch key {
+	case "esc":
+		p.ClearSearch()
+		return true
+	case "enter":
+		p.StopSearch()
+		return true
+	case "backspace":
+		if len(p.SearchQuery) > 0 {
+			p.SearchQuery = p.SearchQuery[:len(p.SearchQuery)-1]
+			p.Cursor = 0
+			p.Scroll = 0
+		}
+		return true
+	default:
+		// Only accept printable single characters
+		if len(key) == 1 && key[0] >= 32 && key[0] <= 126 {
+			p.SearchQuery += key
+			p.Cursor = 0
+			p.Scroll = 0
+			return true
+		}
+		// Allow navigation keys to pass through
+		if key == "up" || key == "k" || key == "down" || key == "j" {
+			return false
+		}
+		return true
+	}
+}
+
+// filteredItems returns Items filtered by SearchQuery (case-insensitive substring match).
+func (p *FacetPanel) filteredItems() []store.FacetCount {
+	if p.SearchQuery == "" {
+		return p.Items
+	}
+	query := strings.ToLower(p.SearchQuery)
+	var result []store.FacetCount
+	for _, item := range p.Items {
+		if strings.Contains(strings.ToLower(item.Value), query) {
+			result = append(result, item)
+		}
+	}
+	return result
 }
 
 func (p *FacetPanel) View() string {
@@ -85,27 +168,33 @@ func (p *FacetPanel) View() string {
 	b.WriteString(title)
 	b.WriteString("\n")
 
+	// Show search input when active
+	if p.Searching {
+		searchStyle := lipgloss.NewStyle().Foreground(styles.ColorAccent)
+		b.WriteString(searchStyle.Render("/" + p.SearchQuery + "█"))
+		b.WriteString("\n")
+	} else if p.SearchQuery != "" {
+		searchStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
+		b.WriteString(searchStyle.Render("/" + p.SearchQuery))
+		b.WriteString("\n")
+	}
+
+	items := p.filteredItems()
+
 	visibleLines := p.visibleLines()
 	if visibleLines < 1 {
 		visibleLines = 1
 	}
 
-	maxVal := 0
-	for _, item := range p.Items {
-		if item.Count > maxVal {
-			maxVal = item.Count
-		}
-	}
-
 	end := p.Scroll + visibleLines
-	if end > len(p.Items) {
-		end = len(p.Items)
+	if end > len(items) {
+		end = len(items)
 	}
 
 	contentWidth := p.Width - 4 // account for border + padding
 
 	for i := p.Scroll; i < end; i++ {
-		item := p.Items[i]
+		item := items[i]
 
 		// Truncate value to fit
 		val := item.Value
@@ -137,7 +226,9 @@ func (p *FacetPanel) View() string {
 		}
 	}
 
-	if len(p.Items) == 0 {
+	if len(items) == 0 && p.SearchQuery != "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("(no matches)"))
+	} else if len(items) == 0 {
 		b.WriteString(lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("(no data)"))
 	}
 

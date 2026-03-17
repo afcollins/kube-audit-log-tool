@@ -289,10 +289,34 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Handle facet search mode: intercept keys when a facet is searching
+	if fp := m.focusedFacet(); fp != nil {
+		if fp.Searching {
+			if fp.HandleSearchKey(msg.String()) {
+				return m, nil
+			}
+			// Key was not consumed (e.g. up/down navigation) — fall through
+		}
+	}
+
 	if m.metricsMode {
 		return m.handleMetricsKey(msg)
 	}
 	return m.handleAuditKey(msg)
+}
+
+// focusedFacet returns the currently focused facet panel, or nil.
+func (m *Model) focusedFacet() *panel.FacetPanel {
+	if m.metricsMode {
+		if m.focus >= 0 && m.focus < m.mTotal {
+			return m.metricFacets[m.focus]
+		}
+	} else {
+		if m.focus >= 0 && m.focus < totalFacetCount {
+			return m.facets[m.focus]
+		}
+	}
+	return nil
 }
 
 // ── Audit mode key handling (original logic) ──
@@ -338,6 +362,9 @@ func (m Model) handleAuditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.store.ClearFilters()
 		m.timeline.ClearSelection()
 		m.eventList.ResetCursor()
+		for _, fp := range m.facets {
+			fp.ClearSearch()
+		}
 		m.refreshPanels()
 		m.statusMsg = "Filters cleared"
 		return m, nil
@@ -348,6 +375,12 @@ func (m Model) handleAuditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.setAuditFocus(0)
 		}
 		m.updateSizes()
+		return m, nil
+
+	case "/":
+		if m.focus >= 0 && m.focus < totalFacetCount {
+			m.facets[m.focus].StartSearch()
+		}
 		return m, nil
 
 	case "e":
@@ -670,8 +703,17 @@ func (m Model) handleMetricsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.scatter.ClearSelection()
 		m.scatter.ClearValueSelection()
 		m.metricList.ResetCursor()
+		for _, fp := range m.metricFacets {
+			fp.ClearSearch()
+		}
 		m.refreshPanels()
 		m.statusMsg = "Filters cleared"
+		return m, nil
+
+	case "/":
+		if m.focus >= 0 && m.focus < m.mTotal {
+			m.metricFacets[m.focus].StartSearch()
+		}
 		return m, nil
 
 	case "f":
