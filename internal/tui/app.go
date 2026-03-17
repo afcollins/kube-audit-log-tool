@@ -74,8 +74,9 @@ type Model struct {
 	mPrimary     int // number of primary metric facets
 	mTotal       int // total visible metric facets
 
-	loadedCount int
-	loadStart   time.Time
+	loadedCount  int
+	loadStart    time.Time
+	confirmQuit  bool
 }
 
 type filesParsedMsg struct {
@@ -274,6 +275,30 @@ func (m *Model) buildMetricFacets() {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// ctrl+c always quits immediately
+	if msg.String() == "ctrl+c" {
+		m.cleanup()
+		return m, tea.Quit
+	}
+
+	// ctrl+z suspends the program
+	if msg.String() == "ctrl+z" {
+		return m, tea.Suspend
+	}
+
+	// Handle quit confirmation
+	if m.confirmQuit {
+		switch msg.String() {
+		case "q", "y":
+			m.cleanup()
+			return m, tea.Quit
+		default:
+			m.confirmQuit = false
+			m.statusMsg = ""
+			return m, nil
+		}
+	}
+
 	if m.eventDetail.Visible {
 		return m.handleDetailKey(msg)
 	}
@@ -283,7 +308,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.state != stateDashboard {
-		if msg.String() == "q" || msg.String() == "ctrl+c" {
+		if msg.String() == "q" {
 			return m, tea.Quit
 		}
 		return m, nil
@@ -323,9 +348,10 @@ func (m *Model) focusedFacet() *panel.FacetPanel {
 
 func (m Model) handleAuditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "q", "ctrl+c":
-		m.cleanup()
-		return m, tea.Quit
+	case "q":
+		m.confirmQuit = true
+		m.statusMsg = "Quit? Press q/y to confirm, any other key to cancel"
+		return m, nil
 
 	case "tab":
 		m.auditFocusNext()
@@ -641,9 +667,10 @@ func (m Model) handleMetricsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	focusList := m.mTotal + 1
 
 	switch msg.String() {
-	case "q", "ctrl+c":
-		m.cleanup()
-		return m, tea.Quit
+	case "q":
+		m.confirmQuit = true
+		m.statusMsg = "Quit? Press q/y to confirm, any other key to cancel"
+		return m, nil
 
 	case "tab":
 		m.metricsFocusNext()
