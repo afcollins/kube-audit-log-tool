@@ -354,11 +354,19 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		sp.ValueCursor = chartHeight - 1
 	}
 
-	// Plot data points
+	// Plot data points. Other options include:
+	// 	'·' (middle dot, U+00B7). Here are some options to consider:
+	//  '•' (U+2022, bullet) — larger filled circle, good visibility
+	//  '●' (U+25CF, black circle) — full-size filled circle, very bold
+	//  '◦' (U+25E6, white bullet) — hollow small circle
+	//  '⬤' (U+2B24, large circle) — very large, may overlap
+	//  '✦' (U+2726, four-pointed star) — distinctive shape
+	//  '⁕' (U+2055, flower punctuation) — small asterisk-like
+	//  '∘' (U+2218, ring operator) — small ring
 	for _, idx := range filtered {
 		e := &ms.Events[idx]
 		x := float64(e.Timestamp.UnixMilli())
-		lc.DrawRune(canvas.Float64Point{X: x, Y: e.Value}, '·')
+		lc.DrawRune(canvas.Float64Point{X: x, Y: e.Value}, '•')
 	}
 
 	// Draw value selection band (shaded region between two Y boundaries)
