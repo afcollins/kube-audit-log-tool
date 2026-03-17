@@ -70,6 +70,7 @@ type Model struct {
 	metricStore  *mstore.MetricStore
 	metricFacets []*panel.FacetPanel
 	metricList   *panel.MetricListPanel
+	scatter      *panel.ScatterPanel
 	mPrimary     int // number of primary metric facets
 	mTotal       int // total visible metric facets
 
@@ -113,6 +114,7 @@ func NewModel(files []string) Model {
 		eventList:   panel.NewEventListPanel(),
 		eventDetail: panel.NewEventDetailPanel(),
 		metricList:  panel.NewMetricListPanel(),
+		scatter:     panel.NewScatterPanel(),
 	}
 
 	if len(files) == 0 {
@@ -533,23 +535,32 @@ func (m Model) auditSelectCurrent() (tea.Model, tea.Cmd) {
 func (m Model) handleTimelineSelect() (tea.Model, tea.Cmd) {
 	if m.timeline.MarkSelection() {
 		start, end := m.timeline.SelectedTimeRange()
-		if m.metricsMode {
-			m.metricStore.SetTimeFilter(start, end)
-			m.metricList.ResetCursor()
-		} else {
-			f := m.store.Filters()
-			f.TimeStart = start
-			f.TimeEnd = end
-			m.store.SetFilters(f)
-			m.eventList.ResetCursor()
-		}
+		f := m.store.Filters()
+		f.TimeStart = start
+		f.TimeEnd = end
+		m.store.SetFilters(f)
+		m.eventList.ResetCursor()
 		m.refreshPanels()
-		filtered := m.filteredCount()
 		m.statusMsg = fmt.Sprintf("Time filter: %s - %s (%d results)",
-			start.Format("15:04:05"), end.Format("15:04:05"), filtered)
+			start.Format("15:04:05"), end.Format("15:04:05"), m.store.FilteredCount())
 	} else {
 		m.statusMsg = fmt.Sprintf("Selection start: %s — move cursor and press Enter to set end",
 			m.timeline.CursorTime())
+	}
+	return m, nil
+}
+
+func (m Model) handleScatterSelect() (tea.Model, tea.Cmd) {
+	if m.scatter.MarkSelection() {
+		start, end := m.scatter.SelectedTimeRange()
+		m.metricStore.SetTimeFilter(start, end)
+		m.metricList.ResetCursor()
+		m.refreshPanels()
+		m.statusMsg = fmt.Sprintf("Time filter: %s - %s (%d results)",
+			start.Format("15:04:05"), end.Format("15:04:05"), m.metricStore.FilteredCount())
+	} else {
+		m.statusMsg = fmt.Sprintf("Selection start: %s — move cursor and press Enter to set end",
+			m.scatter.CursorTime())
 	}
 	return m, nil
 }
@@ -614,13 +625,13 @@ func (m Model) handleMetricsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "left", "h":
 		if m.focus == focusTimeline {
-			m.timeline.MoveLeft()
+			m.scatter.MoveLeft()
 		}
 		return m, nil
 
 	case "right", "l":
 		if m.focus == focusTimeline {
-			m.timeline.MoveRight()
+			m.scatter.MoveRight()
 		}
 		return m, nil
 
@@ -629,7 +640,7 @@ func (m Model) handleMetricsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "c":
 		m.metricStore.ClearFilters()
-		m.timeline.ClearSelection()
+		m.scatter.ClearSelection()
 		m.metricList.ResetCursor()
 		m.refreshPanels()
 		m.statusMsg = "Filters cleared"
@@ -675,7 +686,7 @@ func (m Model) handleMetricsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.focus == focusTimeline {
-			m.timeline.ClearSelection()
+			m.scatter.ClearSelection()
 			if !m.metricStore.TimeStart().IsZero() || !m.metricStore.TimeEnd().IsZero() {
 				m.metricStore.ClearTimeFilter()
 				m.metricList.ResetCursor()
@@ -699,7 +710,7 @@ func (m *Model) setMetricsFocus(idx int) {
 		m.metricFacets[m.focus].Focused = false
 	}
 	if m.focus == m.mTotal {
-		m.timeline.Focused = false
+		m.scatter.Focused = false
 	}
 	if m.focus == m.mTotal+1 {
 		m.metricList.Focused = false
@@ -711,7 +722,7 @@ func (m *Model) setMetricsFocus(idx int) {
 		m.metricFacets[idx].Focused = true
 	}
 	if idx == m.mTotal {
-		m.timeline.Focused = true
+		m.scatter.Focused = true
 	}
 	if idx == m.mTotal+1 {
 		m.metricList.Focused = true
@@ -775,7 +786,7 @@ func (m Model) metricsSelectCurrent() (tea.Model, tea.Cmd) {
 		}
 	}
 	if m.focus == m.mTotal {
-		return m.handleTimelineSelect()
+		return m.handleScatterSelect()
 	}
 	if m.focus == m.mTotal+1 {
 		return m.showMetricDetail()
@@ -949,8 +960,8 @@ func (m *Model) updateMetricsSizes() {
 	}
 
 	m.filterBar.Width = m.width
-	m.timeline.Width = m.width
-	m.timeline.Height = styles.TimelinePanelHeight
+	m.scatter.Width = m.width
+	m.scatter.Height = styles.TimelinePanelHeight
 	m.metricList.Width = m.width
 
 	facetRows := 1
@@ -1125,8 +1136,8 @@ func (m Model) metricsDashboardView() string {
 		}
 	}
 
-	// Timeline
-	sections = append(sections, m.timeline.View(m.metricStore))
+	// Scatter plot
+	sections = append(sections, m.scatter.View(m.metricStore))
 
 	// Metric list
 	sections = append(sections, m.metricList.View(m.metricStore))
