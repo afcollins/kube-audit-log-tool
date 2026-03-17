@@ -128,7 +128,10 @@ func (s *MetricStore) TopN(field string, n int) []store.FacetCount {
 	}
 
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].Count > result[j].Count
+		if result[i].Count != result[j].Count {
+			return result[i].Count > result[j].Count
+		}
+		return result[i].Value < result[j].Value
 	})
 
 	if n > 0 && len(result) > n {
