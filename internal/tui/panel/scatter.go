@@ -182,7 +182,7 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 	for _, idx := range filtered {
 		e := &ms.Events[idx]
 		x := float64(e.Timestamp.UnixMilli())
-		lc.DrawRune(canvas.Float64Point{X: x, Y: e.Value}, '•')
+		lc.DrawRune(canvas.Float64Point{X: x, Y: e.Value}, '·')
 	}
 
 	lc.DrawXYAxisAndLabel()
