@@ -91,7 +91,7 @@ func (ml *MetricListPanel) View(s *mstore.MetricStore) string {
 			for i := range events {
 				switch col {
 				case 0:
-					vals[i] = events[i].Timestamp.Format("15:04:05")
+					vals[i] = "15:04:05"
 				case 1:
 					vals[i] = events[i].MetricName
 				case 2:
