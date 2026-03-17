@@ -125,7 +125,7 @@ func (el *EventListPanel) View(s *store.EventStore) string {
 		focused := el.Focused
 		filteredIndices := indices
 
-		t := newListTable().
+		t := newListTable(contentWidth).
 			Headers(headers...).
 			Rows(rows...).
 			StyleFunc(func(row, col int) lipgloss.Style {

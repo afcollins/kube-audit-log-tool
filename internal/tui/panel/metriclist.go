@@ -124,7 +124,7 @@ func (ml *MetricListPanel) View(s *mstore.MetricStore) string {
 		cursor := ml.Cursor
 		focused := ml.Focused
 
-		t := newListTable().
+		t := newListTable(contentWidth).
 			Headers(headers...).
 			Rows(rows...).
 			StyleFunc(func(row, col int) lipgloss.Style {

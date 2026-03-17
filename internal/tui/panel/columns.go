@@ -6,10 +6,14 @@ import (
 	"github.com/charmbracelet/lipgloss/table"
 )
 
+// ManualColumnWidths controls whether column widths are pre-computed from all
+// data (true) or delegated entirely to lipgloss/table auto-sizing (false).
+var ManualColumnWidths = false
+
 // newListTable creates a borderless lipgloss table pre-configured for use
 // inside an event or metric list panel.
-func newListTable() *table.Table {
-	return table.New().
+func newListTable(width int) *table.Table {
+	t := table.New().
 		Wrap(false).
 		BorderTop(false).
 		BorderBottom(false).
@@ -18,6 +22,10 @@ func newListTable() *table.Table {
 		BorderColumn(false).
 		BorderHeader(false).
 		BorderRow(false)
+	if !ManualColumnWidths {
+		t = t.Width(width)
+	}
+	return t
 }
 
 // columnWidthCache holds pre-computed column widths so they remain stable
@@ -87,7 +95,7 @@ func (c *columnWidthCache) computeColumnWidths(headers []string, allValues func(
 }
 
 func listStyleWithWidth(base lipgloss.Style, widths []int, col int) lipgloss.Style {
-	if col < len(widths) {
+	if ManualColumnWidths && col < len(widths) {
 		return base.Width(widths[col])
 	}
 	return base
