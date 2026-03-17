@@ -288,6 +288,12 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		hi := lo
 		if sp.ValueSelEnd >= 0 {
 			hi = sp.ValueSelEnd
+		} else {
+			// Selection in progress — show band from start to cursor
+			hi = sp.ValueCursor
+		}
+		if lo > hi {
+			lo, hi = hi, lo
 		}
 		loVal := sp.stepValue(lo)
 		hiVal := sp.stepValue(hi)
@@ -482,7 +488,12 @@ func (sp *ScatterPanel) inSelection(col int) bool {
 		return false
 	}
 	if sp.SelectionEnd < 0 {
-		return col == sp.SelectionStart
+		// Selection in progress — highlight range from start to cursor
+		start, end := sp.SelectionStart, sp.Cursor
+		if start > end {
+			start, end = end, start
+		}
+		return col >= start && col <= end
 	}
 	start, end := sp.SelectionStart, sp.SelectionEnd
 	if start > end {

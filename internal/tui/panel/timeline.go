@@ -280,8 +280,12 @@ func (tp *TimelinePanel) inSelection(col int) bool {
 		return false
 	}
 	if tp.SelectionEnd < 0 {
-		// Only start is set — highlight just the start bucket
-		return col == tp.SelectionStart
+		// Selection in progress — highlight range from start to cursor
+		start, end := tp.SelectionStart, tp.Cursor
+		if start > end {
+			start, end = end, start
+		}
+		return col >= start && col <= end
 	}
 	start, end := tp.SelectionStart, tp.SelectionEnd
 	if start > end {
