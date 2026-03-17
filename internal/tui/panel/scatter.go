@@ -15,7 +15,6 @@ import (
 
 // Scatter panel configuration constants.
 const (
-	valueSteps     = 50   // number of Y-axis cursor positions
 	histWidth      = 22   // character width of the value histogram (including separator)
 	histShowLabels = true // show count labels on histogram bars
 )
@@ -32,13 +31,14 @@ type ScatterPanel struct {
 	ValueSelStart int // value selection start (-1 = unset)
 	ValueSelEnd   int // value selection end (-1 = unset)
 
-	graphWidth int
-	graphOriX  int
-	minTime    time.Time
-	maxTime    time.Time
-	minValue   float64
-	maxValue   float64
-	lastSig    string
+	graphWidth  int
+	graphOriX   int
+	chartHeight int
+	minTime     time.Time
+	maxTime     time.Time
+	minValue    float64
+	maxValue    float64
+	lastSig     string
 }
 
 func NewScatterPanel() *ScatterPanel {
@@ -72,7 +72,11 @@ func (sp *ScatterPanel) MoveRight() {
 }
 
 func (sp *ScatterPanel) MoveUp() {
-	if sp.ValueCursor < valueSteps-1 {
+	max := sp.chartHeight - 1
+	if max < 1 {
+		max = 1
+	}
+	if sp.ValueCursor < max {
 		sp.ValueCursor++
 	}
 }
@@ -85,12 +89,20 @@ func (sp *ScatterPanel) MoveDown() {
 
 // CursorValue returns the Y value at the current ValueCursor position.
 func (sp *ScatterPanel) CursorValue() float64 {
-	return sp.minValue + (sp.maxValue-sp.minValue)*float64(sp.ValueCursor)/float64(valueSteps-1)
+	steps := sp.chartHeight - 1
+	if steps < 1 {
+		steps = 1
+	}
+	return sp.minValue + (sp.maxValue-sp.minValue)*float64(sp.ValueCursor)/float64(steps)
 }
 
 // stepValue returns the Y value at a given step position.
 func (sp *ScatterPanel) stepValue(step int) float64 {
-	return sp.minValue + (sp.maxValue-sp.minValue)*float64(step)/float64(valueSteps-1)
+	steps := sp.chartHeight - 1
+	if steps < 1 {
+		steps = 1
+	}
+	return sp.minValue + (sp.maxValue-sp.minValue)*float64(step)/float64(steps)
 }
 
 func (sp *ScatterPanel) MarkSelection() bool {
@@ -160,10 +172,11 @@ func (sp *ScatterPanel) CursorTime() string {
 
 func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 	cw := sp.contentWidth()
-	chartHeight := sp.Height - 7
-	if chartHeight < 3 {
-		chartHeight = 3
+	sp.chartHeight = sp.Height - 7
+	if sp.chartHeight < 3 {
+		sp.chartHeight = 3
 	}
+	chartHeight := sp.chartHeight
 
 	filtered := ms.Filtered()
 	panelStyle := styles.PanelStyle.Width(sp.Width - 2)
@@ -256,6 +269,9 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 
 	if sp.graphWidth > 0 && sp.Cursor >= sp.graphWidth {
 		sp.Cursor = sp.graphWidth - 1
+	}
+	if sp.ValueCursor >= chartHeight {
+		sp.ValueCursor = chartHeight - 1
 	}
 
 	// Plot data points
