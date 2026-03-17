@@ -13,18 +13,26 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const valueSteps = 50
+
 type ScatterPanel struct {
 	Width          int
 	Height         int
 	Focused        bool
-	Cursor         int
-	SelectionStart int
-	SelectionEnd   int
+	Cursor         int // X-axis (time) cursor
+	SelectionStart int // time selection start
+	SelectionEnd   int // time selection end
+
+	ValueCursor   int // Y-axis cursor (0 = minV, valueSteps-1 = maxV)
+	ValueSelStart int // value selection start (-1 = unset)
+	ValueSelEnd   int // value selection end (-1 = unset)
 
 	graphWidth int
 	graphOriX  int
 	minTime    time.Time
 	maxTime    time.Time
+	minValue   float64
+	maxValue   float64
 	lastSig    string
 }
 
@@ -33,6 +41,8 @@ func NewScatterPanel() *ScatterPanel {
 		Height:         styles.TimelinePanelHeight,
 		SelectionStart: -1,
 		SelectionEnd:   -1,
+		ValueSelStart:  -1,
+		ValueSelEnd:    -1,
 	}
 }
 
@@ -56,6 +66,28 @@ func (sp *ScatterPanel) MoveRight() {
 	}
 }
 
+func (sp *ScatterPanel) MoveUp() {
+	if sp.ValueCursor < valueSteps-1 {
+		sp.ValueCursor++
+	}
+}
+
+func (sp *ScatterPanel) MoveDown() {
+	if sp.ValueCursor > 0 {
+		sp.ValueCursor--
+	}
+}
+
+// cursorValue returns the Y value at the current ValueCursor position.
+func (sp *ScatterPanel) CursorValue() float64 {
+	return sp.minValue + (sp.maxValue-sp.minValue)*float64(sp.ValueCursor)/float64(valueSteps-1)
+}
+
+// stepValue returns the Y value at a given step position.
+func (sp *ScatterPanel) stepValue(step int) float64 {
+	return sp.minValue + (sp.maxValue-sp.minValue)*float64(step)/float64(valueSteps-1)
+}
+
 func (sp *ScatterPanel) MarkSelection() bool {
 	if sp.graphWidth == 0 {
 		return false
@@ -72,6 +104,19 @@ func (sp *ScatterPanel) MarkSelection() bool {
 	return true
 }
 
+func (sp *ScatterPanel) MarkValueSelection() bool {
+	if sp.ValueSelStart == -1 {
+		sp.ValueSelStart = sp.ValueCursor
+		sp.ValueSelEnd = -1
+		return false
+	}
+	sp.ValueSelEnd = sp.ValueCursor
+	if sp.ValueSelStart > sp.ValueSelEnd {
+		sp.ValueSelStart, sp.ValueSelEnd = sp.ValueSelEnd, sp.ValueSelStart
+	}
+	return true
+}
+
 func (sp *ScatterPanel) SelectedTimeRange() (time.Time, time.Time) {
 	if sp.SelectionStart < 0 || sp.SelectionEnd < 0 || sp.graphWidth <= 0 {
 		return time.Time{}, time.Time{}
@@ -82,9 +127,21 @@ func (sp *ScatterPanel) SelectedTimeRange() (time.Time, time.Time) {
 	return start, end
 }
 
+func (sp *ScatterPanel) SelectedValueRange() (float64, float64) {
+	if sp.ValueSelStart < 0 || sp.ValueSelEnd < 0 {
+		return 0, 0
+	}
+	return sp.stepValue(sp.ValueSelStart), sp.stepValue(sp.ValueSelEnd)
+}
+
 func (sp *ScatterPanel) ClearSelection() {
 	sp.SelectionStart = -1
 	sp.SelectionEnd = -1
+}
+
+func (sp *ScatterPanel) ClearValueSelection() {
+	sp.ValueSelStart = -1
+	sp.ValueSelEnd = -1
 }
 
 func (sp *ScatterPanel) CursorTime() string {
@@ -142,13 +199,17 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 
 	sp.minTime = minT
 	sp.maxTime = maxT
+	sp.minValue = minV
+	sp.maxValue = maxV
 
-	// Clear stale selection on data change
+	// Clear stale selections on data change
 	sig := fmt.Sprintf("%d:%s:%s:%.4f:%.4f", len(filtered),
 		minT.Format(time.RFC3339Nano), maxT.Format(time.RFC3339Nano), minV, maxV)
 	if sig != sp.lastSig {
 		sp.SelectionStart = -1
 		sp.SelectionEnd = -1
+		sp.ValueSelStart = -1
+		sp.ValueSelEnd = -1
 		sp.lastSig = sig
 	}
 
@@ -179,14 +240,6 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		),
 	)
 
-	for _, idx := range filtered {
-		e := &ms.Events[idx]
-		x := float64(e.Timestamp.UnixMilli())
-		lc.DrawRune(canvas.Float64Point{X: x, Y: e.Value}, '·')
-	}
-
-	lc.DrawXYAxisAndLabel()
-
 	sp.graphWidth = lc.GraphWidth()
 	sp.graphOriX = lc.Origin().X
 
@@ -194,6 +247,47 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		sp.Cursor = sp.graphWidth - 1
 	}
 
+	// Plot data points
+	for _, idx := range filtered {
+		e := &ms.Events[idx]
+		x := float64(e.Timestamp.UnixMilli())
+		lc.DrawRune(canvas.Float64Point{X: x, Y: e.Value}, '·')
+	}
+
+	// Draw value selection band (shaded region between two Y boundaries)
+	if sp.Focused && sp.ValueSelStart >= 0 {
+		bandStyle := lipgloss.NewStyle().Foreground(styles.ColorAccent)
+		lo := sp.ValueSelStart
+		hi := lo
+		if sp.ValueSelEnd >= 0 {
+			hi = sp.ValueSelEnd
+		} else {
+			// Only start set: show single line
+			hi = lo
+		}
+		loVal := sp.stepValue(lo)
+		hiVal := sp.stepValue(hi)
+		// Draw boundary lines across full width
+		for i := 0; i <= sp.graphWidth; i++ {
+			x := minX + (maxX-minX)*float64(i)/float64(sp.graphWidth)
+			lc.DrawRuneWithStyle(canvas.Float64Point{X: x, Y: loVal}, '─', bandStyle)
+			if hi != lo {
+				lc.DrawRuneWithStyle(canvas.Float64Point{X: x, Y: hiVal}, '─', bandStyle)
+			}
+		}
+	}
+
+	// Draw horizontal cursor line at valueCursor position
+	if sp.Focused {
+		cursorLineStyle := lipgloss.NewStyle().Foreground(styles.ColorPrimary)
+		cursorY := sp.CursorValue()
+		for i := 0; i <= sp.graphWidth; i++ {
+			x := minX + (maxX-minX)*float64(i)/float64(sp.graphWidth)
+			lc.DrawRuneWithStyle(canvas.Float64Point{X: x, Y: cursorY}, '─', cursorLineStyle)
+		}
+	}
+
+	lc.DrawXYAxisAndLabel()
 	chartStr := lc.View()
 
 	// X-axis line aligned to graph area
@@ -242,14 +336,20 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 	// Title with context
 	var b strings.Builder
 	titleParts := fmt.Sprintf("Scatter (%.1f - %.1f, %d pts)", minV, maxV, len(filtered))
-	if sp.Focused && sp.graphWidth > 0 {
-		titleParts += fmt.Sprintf("  cursor: %s", sp.CursorTime())
+	if sp.Focused {
+		titleParts += fmt.Sprintf("  Y: %.2f", sp.CursorValue())
+	}
+	if sp.ValueSelStart >= 0 && sp.ValueSelEnd >= 0 {
+		vMin, vMax := sp.SelectedValueRange()
+		titleParts += fmt.Sprintf("  band: %.2f-%.2f", vMin, vMax)
+	} else if sp.ValueSelStart >= 0 {
+		titleParts += fmt.Sprintf("  band start: %.2f (press v for end)", sp.stepValue(sp.ValueSelStart))
 	}
 	if sp.SelectionStart >= 0 && sp.SelectionEnd >= 0 {
 		s, e := sp.SelectedTimeRange()
-		titleParts += fmt.Sprintf("  selected: %s-%s", s.Format("15:04:05"), e.Format("15:04:05"))
+		titleParts += fmt.Sprintf("  T: %s-%s", s.Format("15:04:05"), e.Format("15:04:05"))
 	} else if sp.SelectionStart >= 0 {
-		titleParts += fmt.Sprintf("  start: %s (press Enter for end)", sp.CursorTime())
+		titleParts += fmt.Sprintf("  T start: %s", sp.CursorTime())
 	}
 
 	b.WriteString(styles.TitleStyle.Render(titleParts))
@@ -263,7 +363,7 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 	b.WriteString(timeRow.String())
 	if sp.Focused {
 		b.WriteString("\n")
-		b.WriteString(styles.HelpStyle.Render("[←→] move  [Enter] mark start/end  [Esc] clear range"))
+		b.WriteString(styles.HelpStyle.Render("[←→] time  [↑↓] value  [Enter] time range  [v] value range  [Esc] clear"))
 	}
 
 	return panelStyle.Render(b.String())

@@ -565,6 +565,21 @@ func (m Model) handleScatterSelect() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) handleValueSelect() (tea.Model, tea.Cmd) {
+	if m.scatter.MarkValueSelection() {
+		vMin, vMax := m.scatter.SelectedValueRange()
+		m.metricStore.SetValueFilter(vMin, vMax)
+		m.metricList.ResetCursor()
+		m.refreshPanels()
+		m.statusMsg = fmt.Sprintf("Value filter: %.2f - %.2f (%d results)",
+			vMin, vMax, m.metricStore.FilteredCount())
+	} else {
+		m.statusMsg = fmt.Sprintf("Value band start: %.2f — move ↑↓ and press v to set end",
+			m.scatter.CursorValue())
+	}
+	return m, nil
+}
+
 func (m Model) showAuditDetail() (tea.Model, tea.Cmd) {
 	idx := m.eventList.SelectedIndex(m.store)
 	if idx < 0 {
@@ -609,6 +624,9 @@ func (m Model) handleMetricsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.focus >= 0 && m.focus < m.mTotal {
 			m.metricFacets[m.focus].MoveUp()
 		}
+		if m.focus == focusTimeline {
+			m.scatter.MoveUp()
+		}
 		if m.focus == focusList {
 			m.metricList.MoveUp()
 		}
@@ -617,6 +635,9 @@ func (m Model) handleMetricsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		if m.focus >= 0 && m.focus < m.mTotal {
 			m.metricFacets[m.focus].MoveDown()
+		}
+		if m.focus == focusTimeline {
+			m.scatter.MoveDown()
 		}
 		if m.focus == focusList {
 			m.metricList.MoveDown(m.metricStore.FilteredCount())
@@ -638,9 +659,16 @@ func (m Model) handleMetricsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter", " ":
 		return m.metricsSelectCurrent()
 
+	case "v":
+		if m.focus == focusTimeline {
+			return m.handleValueSelect()
+		}
+		return m, nil
+
 	case "c":
 		m.metricStore.ClearFilters()
 		m.scatter.ClearSelection()
+		m.scatter.ClearValueSelection()
 		m.metricList.ResetCursor()
 		m.refreshPanels()
 		m.statusMsg = "Filters cleared"
@@ -687,11 +715,20 @@ func (m Model) handleMetricsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.focus == focusTimeline {
 			m.scatter.ClearSelection()
+			m.scatter.ClearValueSelection()
+			hadFilter := false
 			if !m.metricStore.TimeStart().IsZero() || !m.metricStore.TimeEnd().IsZero() {
 				m.metricStore.ClearTimeFilter()
+				hadFilter = true
+			}
+			if m.metricStore.HasValueFilter() {
+				m.metricStore.ClearValueFilter()
+				hadFilter = true
+			}
+			if hadFilter {
 				m.metricList.ResetCursor()
 				m.refreshPanels()
-				m.statusMsg = "Time filter cleared"
+				m.statusMsg = "Filters cleared"
 			} else {
 				m.statusMsg = "Selection cleared"
 			}

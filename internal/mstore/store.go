@@ -21,10 +21,13 @@ type MetricStore struct {
 	FieldNames    []string // all discovered facet-able field names, sorted
 	PrimaryFields []string
 
-	filtered  []int
-	filters   map[string]string
-	timeStart time.Time
-	timeEnd   time.Time
+	filtered       []int
+	filters        map[string]string
+	timeStart      time.Time
+	timeEnd        time.Time
+	valueMin       float64
+	valueMax       float64
+	hasValueFilter bool
 }
 
 func New() *MetricStore {
@@ -163,6 +166,7 @@ func (s *MetricStore) ClearFilters() {
 	s.filters = make(map[string]string)
 	s.timeStart = time.Time{}
 	s.timeEnd = time.Time{}
+	s.hasValueFilter = false
 	s.refilter()
 }
 
@@ -178,14 +182,29 @@ func (s *MetricStore) ClearTimeFilter() {
 	s.refilter()
 }
 
-func (s *MetricStore) TimeStart() time.Time { return s.timeStart }
-func (s *MetricStore) TimeEnd() time.Time   { return s.timeEnd }
+func (s *MetricStore) TimeStart() time.Time    { return s.timeStart }
+func (s *MetricStore) TimeEnd() time.Time      { return s.timeEnd }
+func (s *MetricStore) HasValueFilter() bool    { return s.hasValueFilter }
+func (s *MetricStore) ValueFilterMin() float64 { return s.valueMin }
+func (s *MetricStore) ValueFilterMax() float64 { return s.valueMax }
+
+func (s *MetricStore) SetValueFilter(min, max float64) {
+	s.valueMin = min
+	s.valueMax = max
+	s.hasValueFilter = true
+	s.refilter()
+}
+
+func (s *MetricStore) ClearValueFilter() {
+	s.hasValueFilter = false
+	s.refilter()
+}
 
 func (s *MetricStore) refilter() {
 	noFieldFilters := len(s.filters) == 0
 	noTimeFilters := s.timeStart.IsZero() && s.timeEnd.IsZero()
 
-	if noFieldFilters && noTimeFilters {
+	if noFieldFilters && noTimeFilters && !s.hasValueFilter {
 		s.filtered = make([]int, len(s.Events))
 		for i := range s.filtered {
 			s.filtered[i] = i
@@ -215,6 +234,9 @@ func (s *MetricStore) matchesFilters(i int) bool {
 		return false
 	}
 	if !s.timeEnd.IsZero() && e.Timestamp.After(s.timeEnd) {
+		return false
+	}
+	if s.hasValueFilter && (e.Value < s.valueMin || e.Value > s.valueMax) {
 		return false
 	}
 	return true
