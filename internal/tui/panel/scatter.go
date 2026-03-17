@@ -13,7 +13,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-const valueSteps = 50
+// Scatter panel configuration constants.
+const (
+	valueSteps     = 50   // number of Y-axis cursor positions
+	histWidth      = 22   // character width of the value histogram (including separator)
+	histShowLabels = true // show count labels on histogram bars
+)
 
 type ScatterPanel struct {
 	Width          int
@@ -78,7 +83,7 @@ func (sp *ScatterPanel) MoveDown() {
 	}
 }
 
-// cursorValue returns the Y value at the current ValueCursor position.
+// CursorValue returns the Y value at the current ValueCursor position.
 func (sp *ScatterPanel) CursorValue() float64 {
 	return sp.minValue + (sp.maxValue-sp.minValue)*float64(sp.ValueCursor)/float64(valueSteps-1)
 }
@@ -230,7 +235,13 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		}
 	}
 
-	lc := linechart.New(cw, chartHeight, minX, maxX, minV, maxV,
+	// Allocate width: chart gets the remainder, histogram gets fixed width
+	chartCW := cw - histWidth
+	if chartCW < 15 {
+		chartCW = 15
+	}
+
+	lc := linechart.New(chartCW, chartHeight, minX, maxX, minV, maxV,
 		linechart.WithXYSteps(0, 2),
 		linechart.WithYLabelFormatter(yLabelFmt),
 		linechart.WithStyles(
@@ -261,13 +272,9 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		hi := lo
 		if sp.ValueSelEnd >= 0 {
 			hi = sp.ValueSelEnd
-		} else {
-			// Only start set: show single line
-			hi = lo
 		}
 		loVal := sp.stepValue(lo)
 		hiVal := sp.stepValue(hi)
-		// Draw boundary lines across full width
 		for i := 0; i <= sp.graphWidth; i++ {
 			x := minX + (maxX-minX)*float64(i)/float64(sp.graphWidth)
 			lc.DrawRuneWithStyle(canvas.Float64Point{X: x, Y: loVal}, '─', bandStyle)
@@ -289,6 +296,22 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 
 	lc.DrawXYAxisAndLabel()
 	chartStr := lc.View()
+
+	// Build value histogram
+	histLines := sp.buildHistogram(filtered, ms, chartHeight, minV, maxV)
+
+	// Join chart lines with histogram lines
+	chartLines := strings.Split(chartStr, "\n")
+	var joinedChart strings.Builder
+	for i, line := range chartLines {
+		joinedChart.WriteString(line)
+		if i < len(histLines) {
+			joinedChart.WriteString(histLines[i])
+		}
+		if i < len(chartLines)-1 {
+			joinedChart.WriteString("\n")
+		}
+	}
 
 	// X-axis line aligned to graph area
 	axisStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
@@ -354,7 +377,7 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 
 	b.WriteString(styles.TitleStyle.Render(titleParts))
 	b.WriteString("\n")
-	b.WriteString(chartStr)
+	b.WriteString(joinedChart.String())
 	b.WriteString("\n")
 	b.WriteString(axisRow.String())
 	b.WriteString("\n")
@@ -367,6 +390,75 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 	}
 
 	return panelStyle.Render(b.String())
+}
+
+// buildHistogram creates histogram lines aligned to the chart rows.
+// One bucket per row, with bars and right-aligned count labels.
+func (sp *ScatterPanel) buildHistogram(filtered []int, ms *mstore.MetricStore, chartHeight int, minV, maxV float64) []string {
+	nBuckets := chartHeight
+	vRange := maxV - minV
+
+	// Count events per bucket
+	bucketCounts := make([]int, nBuckets)
+	for _, idx := range filtered {
+		e := &ms.Events[idx]
+		bi := int((e.Value - minV) / vRange * float64(nBuckets))
+		if bi >= nBuckets {
+			bi = nBuckets - 1
+		}
+		if bi < 0 {
+			bi = 0
+		}
+		bucketCounts[bi]++
+	}
+
+	maxCount := 0
+	for _, c := range bucketCounts {
+		if c > maxCount {
+			maxCount = c
+		}
+	}
+
+	// Label width from max count
+	labelWidth := len(fmt.Sprintf("%d", maxCount))
+
+	// Bar area: histWidth - 1(separator) - 1(space) - labelWidth
+	maxBarWidth := histWidth - 2 - labelWidth
+	if maxBarWidth < 1 {
+		maxBarWidth = 1
+	}
+
+	barStyle := lipgloss.NewStyle().Foreground(styles.ColorBar)
+	sepStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
+	labelStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
+
+	// Row 0 = top (maxV), row chartHeight-1 = bottom (minV)
+	// Bucket 0 = minV, bucket nBuckets-1 = maxV
+	lines := make([]string, chartHeight)
+	for r := 0; r < chartHeight; r++ {
+		bi := chartHeight - 1 - r
+		count := bucketCounts[bi]
+
+		barLen := 0
+		if maxCount > 0 {
+			barLen = count * maxBarWidth / maxCount
+		}
+
+		var line strings.Builder
+		line.WriteString(sepStyle.Render("│"))
+		if barLen > 0 {
+			line.WriteString(barStyle.Render(strings.Repeat(styles.BarCharFull, barLen)))
+		}
+		pad := maxBarWidth - barLen
+		line.WriteString(strings.Repeat(" ", pad))
+		if histShowLabels {
+			line.WriteString(labelStyle.Render(fmt.Sprintf(" %*d", labelWidth, count)))
+		}
+
+		lines[r] = line.String()
+	}
+
+	return lines
 }
 
 func (sp *ScatterPanel) inSelection(col int) bool {
