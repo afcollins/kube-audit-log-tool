@@ -98,7 +98,7 @@ func (sp *ScatterPanel) CursorTime() string {
 
 func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 	cw := sp.contentWidth()
-	chartHeight := sp.Height - 6
+	chartHeight := sp.Height - 7
 	if chartHeight < 3 {
 		chartHeight = 3
 	}
@@ -196,6 +196,14 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 
 	chartStr := lc.View()
 
+	// X-axis line aligned to graph area
+	axisStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
+	var axisRow strings.Builder
+	if sp.graphOriX > 0 {
+		axisRow.WriteString(strings.Repeat(" ", sp.graphOriX+1))
+	}
+	axisRow.WriteString(axisStyle.Render(strings.Repeat("─", sp.graphWidth)))
+
 	// Cursor row aligned to graph area
 	cursorBarStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#FFFFFF")).
@@ -247,6 +255,8 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 	b.WriteString(styles.TitleStyle.Render(titleParts))
 	b.WriteString("\n")
 	b.WriteString(chartStr)
+	b.WriteString("\n")
+	b.WriteString(axisRow.String())
 	b.WriteString("\n")
 	b.WriteString(cursorRow.String())
 	b.WriteString("\n")

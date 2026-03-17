@@ -137,7 +137,7 @@ func (tp *TimelinePanel) View(s TimelineSource) string {
 		}
 	}
 
-	barHeight := tp.Height - 4
+	barHeight := tp.Height - 5
 	if barHeight < 3 {
 		barHeight = 3
 	}
@@ -175,6 +175,10 @@ func (tp *TimelinePanel) View(s TimelineSource) string {
 		}
 		rows = append(rows, line.String())
 	}
+
+	// X-axis line
+	axisStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
+	rows = append(rows, axisStyle.Render(strings.Repeat("─", cw)))
 
 	// Cursor indicator row
 	var cursorRow strings.Builder
