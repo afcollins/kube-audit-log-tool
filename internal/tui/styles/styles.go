@@ -54,10 +54,20 @@ var (
 	BarCharEmpty = "░"
 )
 
-// Panel size defaults. Change these to adjust the dashboard layout.
+// Fixed-height elements.
 const (
-	FacetPanelHeight    = 14
-	TimelinePanelHeight = 28
-	FilterBarHeight     = 2
-	StatusBarHeight     = 2
+	FilterBarHeight = 2
+	StatusBarHeight = 2
 )
+
+// Proportional height ratios for the three main sections.
+// These are relative weights — the available height (after filter/status bars)
+// is divided among them.
+const (
+	FacetHeightRatio    = 25 // percentage of available height per facet row
+	TimelineHeightRatio = 40 // percentage of available height for timeline/scatter
+	ListHeightRatio     = 35 // percentage of available height for event/metric list
+)
+
+// MinFacetPanelHeight prevents facets from becoming unusably small.
+const MinFacetPanelHeight = 6

@@ -38,7 +38,7 @@ func NewFacetPanel(title, field string) *FacetPanel {
 		Title:  title,
 		Field:  field,
 		Width:  20,
-		Height: styles.FacetPanelHeight,
+		Height: 14,
 	}
 }
 

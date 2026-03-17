@@ -43,7 +43,7 @@ type ScatterPanel struct {
 
 func NewScatterPanel() *ScatterPanel {
 	return &ScatterPanel{
-		Height:         styles.TimelinePanelHeight,
+		Height:         28,
 		SelectionStart: -1,
 		SelectionEnd:   -1,
 		ValueSelStart:  -1,

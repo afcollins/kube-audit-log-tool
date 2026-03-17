@@ -977,32 +977,50 @@ func (m *Model) updateSizes() {
 }
 
 func (m *Model) updateAuditSizes() {
+	facetRows := 1
+	if m.showSecondary {
+		facetRows = 2
+	}
+
+	// Compute proportional heights
+	available := m.height - styles.FilterBarHeight - styles.StatusBarHeight
+	if available < 15 {
+		available = 15
+	}
+
+	facetTotalRatio := styles.FacetHeightRatio * facetRows
+	totalRatio := facetTotalRatio + styles.TimelineHeightRatio + styles.ListHeightRatio
+	facetH := available * styles.FacetHeightRatio / totalRatio
+	timelineH := available * styles.TimelineHeightRatio / totalRatio
+	listH := available - (facetH * facetRows) - timelineH
+
+	if facetH < styles.MinFacetPanelHeight {
+		facetH = styles.MinFacetPanelHeight
+	}
+	if timelineH < 8 {
+		timelineH = 8
+	}
+	if listH < 5 {
+		listH = 5
+	}
+
 	primaryWidth := m.width / primaryFacetCount
 	for i := 0; i < primaryFacetCount; i++ {
 		m.facets[i].Width = primaryWidth
-		m.facets[i].Height = styles.FacetPanelHeight
+		m.facets[i].Height = facetH
 	}
 
 	secondaryWidth := m.width / (totalFacetCount - primaryFacetCount)
 	for i := secondaryFacetStart; i < totalFacetCount; i++ {
 		m.facets[i].Width = secondaryWidth
-		m.facets[i].Height = styles.FacetPanelHeight
+		m.facets[i].Height = facetH
 	}
 
 	m.filterBar.Width = m.width
 	m.timeline.Width = m.width
-	m.timeline.Height = styles.TimelinePanelHeight
+	m.timeline.Height = timelineH
 	m.eventList.Width = m.width
-
-	facetRows := 1
-	if m.showSecondary {
-		facetRows = 2
-	}
-	remaining := m.height - (styles.FacetPanelHeight * facetRows) - styles.FilterBarHeight - styles.TimelinePanelHeight - styles.StatusBarHeight
-	if remaining < 5 {
-		remaining = 5
-	}
-	m.eventList.Height = remaining
+	m.eventList.Height = listH
 }
 
 func (m *Model) updateMetricsSizes() {
@@ -1018,42 +1036,60 @@ func (m *Model) updateMetricsSizes() {
 	if perRow == 0 {
 		perRow = 1
 	}
-	primaryWidth := m.width / perRow
-	for i := 0; i < m.mPrimary && i < m.mTotal; i++ {
-		m.metricFacets[i].Width = primaryWidth
-		m.metricFacets[i].Height = styles.FacetPanelHeight
-	}
-
-	// Secondary: all in one row, evenly spaced
-	secCount := m.mTotal - m.mPrimary
-	if secCount > 0 {
-		secWidth := m.width / secCount
-		for i := m.mPrimary; i < m.mTotal; i++ {
-			m.metricFacets[i].Width = secWidth
-			m.metricFacets[i].Height = styles.FacetPanelHeight
-		}
-	}
-
-	m.filterBar.Width = m.width
-	m.scatter.Width = m.width
-	m.scatter.Height = styles.TimelinePanelHeight
-	m.metricList.Width = m.width
 
 	// Account for primary rows if > 4
 	primaryRows := (m.mPrimary + 3) / 4
 	if primaryRows < 1 {
 		primaryRows = 1
 	}
+	secCount := m.mTotal - m.mPrimary
 	facetRows := primaryRows
 	if m.showSecondary && secCount > 0 {
 		facetRows++
 	}
 
-	remaining := m.height - (styles.FacetPanelHeight * facetRows) - styles.FilterBarHeight - styles.TimelinePanelHeight - styles.StatusBarHeight
-	if remaining < 5 {
-		remaining = 5
+	// Compute proportional heights
+	available := m.height - styles.FilterBarHeight - styles.StatusBarHeight
+	if available < 15 {
+		available = 15
 	}
-	m.metricList.Height = remaining
+
+	facetTotalRatio := styles.FacetHeightRatio * facetRows
+	totalRatio := facetTotalRatio + styles.TimelineHeightRatio + styles.ListHeightRatio
+	facetH := available * styles.FacetHeightRatio / totalRatio
+	scatterH := available * styles.TimelineHeightRatio / totalRatio
+	listH := available - (facetH * facetRows) - scatterH
+
+	if facetH < styles.MinFacetPanelHeight {
+		facetH = styles.MinFacetPanelHeight
+	}
+	if scatterH < 8 {
+		scatterH = 8
+	}
+	if listH < 5 {
+		listH = 5
+	}
+
+	primaryWidth := m.width / perRow
+	for i := 0; i < m.mPrimary && i < m.mTotal; i++ {
+		m.metricFacets[i].Width = primaryWidth
+		m.metricFacets[i].Height = facetH
+	}
+
+	// Secondary: all in one row, evenly spaced
+	if secCount > 0 {
+		secWidth := m.width / secCount
+		for i := m.mPrimary; i < m.mTotal; i++ {
+			m.metricFacets[i].Width = secWidth
+			m.metricFacets[i].Height = facetH
+		}
+	}
+
+	m.filterBar.Width = m.width
+	m.scatter.Width = m.width
+	m.scatter.Height = scatterH
+	m.metricList.Width = m.width
+	m.metricList.Height = listH
 }
 
 func (m Model) exportFiltered() tea.Cmd {

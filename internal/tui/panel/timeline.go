@@ -28,7 +28,7 @@ type TimelinePanel struct {
 
 func NewTimelinePanel() *TimelinePanel {
 	return &TimelinePanel{
-		Height:         styles.TimelinePanelHeight,
+		Height:         28,
 		SelectionStart: -1,
 		SelectionEnd:   -1,
 	}
