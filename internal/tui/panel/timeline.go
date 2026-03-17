@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NimbleMarkets/ntcharts/barchart"
 	"github.com/afcollins/kube-audit-log-tool/internal/store"
 	"github.com/afcollins/kube-audit-log-tool/internal/tui/styles"
 	"github.com/charmbracelet/lipgloss"
@@ -107,27 +108,20 @@ func (tp *TimelinePanel) CursorTime() string {
 func (tp *TimelinePanel) View(s TimelineSource) string {
 	cw := tp.contentWidth()
 
-	// Show filtered events so timeline reflects active filters
+	panelStyle := styles.PanelStyle.Width(tp.Width - 2)
+	if tp.Focused {
+		panelStyle = styles.FocusedPanelStyle.Width(tp.Width - 2)
+	}
+
+	chartHeight := tp.Height - 6
+	if chartHeight < 3 {
+		chartHeight = 3
+	}
+
+	// First pass: get buckets at full width to determine Y-axis label width
 	tp.buckets = s.Timeline(cw)
 	if len(tp.buckets) == 0 {
-		style := styles.PanelStyle.Width(tp.Width - 2)
-		if tp.Focused {
-			style = styles.FocusedPanelStyle.Width(tp.Width - 2)
-		}
-		return style.Render(styles.TitleStyle.Render("Timeline") + "\n(no data)")
-	}
-
-	// Clamp cursor to valid range
-	if tp.Cursor >= len(tp.buckets) {
-		tp.Cursor = len(tp.buckets) - 1
-	}
-
-	// Clear stale selection when bucket data changes (e.g., after filter applied)
-	sig := tp.bucketSignature()
-	if sig != tp.lastBucketSig {
-		tp.SelectionStart = -1
-		tp.SelectionEnd = -1
-		tp.lastBucketSig = sig
+		return panelStyle.Render(styles.TitleStyle.Render("Timeline") + "\n(no data)")
 	}
 
 	maxCount := 0
@@ -137,51 +131,91 @@ func (tp *TimelinePanel) View(s TimelineSource) string {
 		}
 	}
 
-	barHeight := tp.Height - 5
-	if barHeight < 3 {
-		barHeight = 3
+	// Y-axis label width: right-aligned count + separator
+	yLabelW := len(fmt.Sprintf("%d", maxCount)) + 1
+	graphWidth := cw - yLabelW
+	if graphWidth < 10 {
+		graphWidth = 10
 	}
 
-	barStyle := lipgloss.NewStyle().Foreground(styles.ColorBar)
-	selectedBarStyle := lipgloss.NewStyle().Foreground(styles.ColorAccent)
-	cursorBarStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#FFFFFF")).
-		Background(styles.ColorPrimary)
-
-	// Build rows from top to bottom
-	var rows []string
-	for row := barHeight; row >= 1; row-- {
-		threshold := float64(row) / float64(barHeight) * float64(maxCount)
-		var line strings.Builder
-		for col, b := range tp.buckets {
-			isCursor := col == tp.Cursor && tp.Focused
-			isSelected := tp.inSelection(col)
-			filled := float64(b.Count) >= threshold
-
-			switch {
-			case filled && isCursor:
-				line.WriteString(cursorBarStyle.Render(styles.BarCharFull))
-			case filled && isSelected:
-				line.WriteString(selectedBarStyle.Render(styles.BarCharFull))
-			case filled:
-				line.WriteString(barStyle.Render(styles.BarCharFull))
-			case isCursor:
-				line.WriteString(cursorBarStyle.Render(" "))
-			case isSelected:
-				line.WriteString(selectedBarStyle.Render("·"))
-			default:
-				line.WriteString(" ")
-			}
+	// Re-request buckets at correct graph width
+	tp.buckets = s.Timeline(graphWidth)
+	maxCount = 0
+	for _, b := range tp.buckets {
+		if b.Count > maxCount {
+			maxCount = b.Count
 		}
-		rows = append(rows, line.String())
+	}
+
+	if tp.Cursor >= len(tp.buckets) {
+		tp.Cursor = len(tp.buckets) - 1
+	}
+
+	sig := tp.bucketSignature()
+	if sig != tp.lastBucketSig {
+		tp.SelectionStart = -1
+		tp.SelectionEnd = -1
+		tp.lastBucketSig = sig
+	}
+
+	// Build barchart using ntcharts
+	barNormal := lipgloss.NewStyle().Foreground(styles.ColorBar)
+	barSelected := lipgloss.NewStyle().Foreground(styles.ColorAccent)
+	barCursor := lipgloss.NewStyle().Foreground(styles.ColorPrimary)
+
+	bc := barchart.New(graphWidth, chartHeight,
+		barchart.WithNoAxis(),
+		barchart.WithBarGap(0),
+		barchart.WithNoAutoBarWidth(),
+		barchart.WithBarWidth(1),
+	)
+
+	for col, bucket := range tp.buckets {
+		style := barNormal
+		if col == tp.Cursor && tp.Focused {
+			style = barCursor
+		} else if tp.inSelection(col) {
+			style = barSelected
+		}
+		bc.Push(barchart.BarData{
+			Values: []barchart.BarValue{{Value: float64(bucket.Count), Style: style}},
+		})
+	}
+	bc.Draw()
+
+	// Split chart output into lines and prepend Y-axis labels
+	chartLines := strings.Split(bc.View(), "\n")
+	axisStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
+	labelFmt := fmt.Sprintf("%%%dd ", yLabelW-1)
+
+	var rows []string
+	for i, line := range chartLines {
+		// Show labels at top, middle, and bottom rows
+		var label string
+		switch {
+		case i == 0:
+			label = axisStyle.Render(fmt.Sprintf(labelFmt, maxCount))
+		case i == len(chartLines)/2:
+			label = axisStyle.Render(fmt.Sprintf(labelFmt, maxCount/2))
+		case i == len(chartLines)-1:
+			label = axisStyle.Render(fmt.Sprintf(labelFmt, 0))
+		default:
+			label = strings.Repeat(" ", yLabelW)
+		}
+		rows = append(rows, label+line)
 	}
 
 	// X-axis line
-	axisStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
-	rows = append(rows, axisStyle.Render(strings.Repeat("─", cw)))
+	rows = append(rows, strings.Repeat(" ", yLabelW)+axisStyle.Render(strings.Repeat("─", graphWidth)))
 
 	// Cursor indicator row
+	cursorBarStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FFFFFF")).
+		Background(styles.ColorPrimary)
+	selectedBarStyle := lipgloss.NewStyle().Foreground(styles.ColorAccent)
+
 	var cursorRow strings.Builder
+	cursorRow.WriteString(strings.Repeat(" ", yLabelW))
 	for col := range tp.buckets {
 		if col == tp.Cursor && tp.Focused {
 			cursorRow.WriteString(cursorBarStyle.Render("▲"))
@@ -193,14 +227,14 @@ func (tp *TimelinePanel) View(s TimelineSource) string {
 	}
 	rows = append(rows, cursorRow.String())
 
-	// Time labels — align to content width
+	// Time labels aligned to graph area
 	startLabel := tp.buckets[0].Start.Format("15:04:05")
 	endLabel := tp.buckets[len(tp.buckets)-1].End.Format("15:04:05")
-	timePadding := cw - len(startLabel) - len(endLabel)
+	timePadding := graphWidth - len(startLabel) - len(endLabel)
 	if timePadding < 1 {
 		timePadding = 1
 	}
-	timeRow := startLabel + strings.Repeat(" ", timePadding) + endLabel
+	timeRow := strings.Repeat(" ", yLabelW) + startLabel + strings.Repeat(" ", timePadding) + endLabel
 
 	// Title with context
 	var b strings.Builder
@@ -227,12 +261,7 @@ func (tp *TimelinePanel) View(s TimelineSource) string {
 		b.WriteString(styles.HelpStyle.Render("[←→] move  [Enter] mark start/end  [Esc] clear range"))
 	}
 
-	style := styles.PanelStyle.Width(tp.Width - 2)
-	if tp.Focused {
-		style = styles.FocusedPanelStyle.Width(tp.Width - 2)
-	}
-
-	return style.Render(b.String())
+	return panelStyle.Render(b.String())
 }
 
 func (tp *TimelinePanel) bucketSignature() string {
