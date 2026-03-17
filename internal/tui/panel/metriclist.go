@@ -67,7 +67,10 @@ func (ml *MetricListPanel) View(s *mstore.MetricStore) string {
 
 	contentWidth := ml.Width - 4
 
-	header := formatMetricRow("TIME", "METRIC", "VALUE", "NAMESPACE", "NODE", "POD", contentWidth)
+	// Compute column widths from data (scan all events, not just filtered)
+	colWidths := ml.computeColumnWidths(s, contentWidth)
+
+	header := formatMetricRow("TIME", "METRIC", "VALUE", "NAMESPACE", "NODE", "POD", colWidths)
 	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(styles.ColorSecondary).Render(header))
 	b.WriteString("\n")
 
@@ -89,10 +92,10 @@ func (ml *MetricListPanel) View(s *mstore.MetricStore) string {
 			e.Timestamp.Format("15:04:05"),
 			e.MetricName,
 			valStr,
-			truncate(e.Labels["namespace"], 15),
-			truncate(e.Labels["node"], 20),
-			truncate(e.Labels["pod"], 20),
-			contentWidth,
+			e.Labels["namespace"],
+			e.Labels["node"],
+			e.Labels["pod"],
+			colWidths,
 		)
 
 		if i == ml.Cursor && ml.Focused {
@@ -117,14 +120,67 @@ func (ml *MetricListPanel) View(s *mstore.MetricStore) string {
 	return style.Height(ml.Height - 2).Render(b.String())
 }
 
-func formatMetricRow(time, metric, value, namespace, node, pod string, width int) string {
-	return fmt.Sprintf("%-10s %-24s %-12s %-15s %-20s %s",
-		truncate(time, 10),
-		truncate(metric, 24),
-		truncate(value, 12),
-		truncate(namespace, 15),
-		truncate(node, 20),
-		truncate(pod, 20),
+// computeColumnWidths scans all events to find the max width needed for each
+// dynamic column (namespace, node, pod), then fits them within available space.
+func (ml *MetricListPanel) computeColumnWidths(s *mstore.MetricStore, contentWidth int) [6]int {
+	const (
+		timeW   = 10
+		valueW  = 12
+		gaps    = 5 // spaces between 6 columns
+		minColW = 3
+	)
+
+	// Find max data widths for each dynamic column
+	maxMetric, maxNS, maxNode, maxPod := len("METRIC"), len("NAMESPACE"), len("NODE"), len("POD")
+	for i := range s.Events {
+		e := &s.Events[i]
+		if l := len(e.MetricName); l > maxMetric {
+			maxMetric = l
+		}
+		if l := len(e.Labels["namespace"]); l > maxNS {
+			maxNS = l
+		}
+		if l := len(e.Labels["node"]); l > maxNode {
+			maxNode = l
+		}
+		if l := len(e.Labels["pod"]); l > maxPod {
+			maxPod = l
+		}
+	}
+
+	// Start with ideal widths plus padding, then shrink to fit
+	const colPad = 2
+	metricW := maxMetric + colPad
+	nsW := maxNS + colPad
+	nodeW := maxNode + colPad
+	podW := maxPod
+
+	available := contentWidth - timeW - valueW - gaps
+	total := metricW + nsW + nodeW + podW
+
+	if total > available {
+		// Scale proportionally
+		scale := float64(available) / float64(total)
+		metricW = max(minColW, int(float64(metricW)*scale))
+		nsW = max(minColW, int(float64(nsW)*scale))
+		nodeW = max(minColW, int(float64(nodeW)*scale))
+		podW = max(minColW, available-metricW-nsW-nodeW)
+		if podW < minColW {
+			podW = minColW
+		}
+	}
+
+	return [6]int{timeW, metricW, valueW, nsW, nodeW, podW}
+}
+
+func formatMetricRow(time, metric, value, namespace, node, pod string, w [6]int) string {
+	return fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s %-*s",
+		w[0], truncate(time, w[0]),
+		w[1], truncate(metric, w[1]),
+		w[2], truncate(value, w[2]),
+		w[3], truncate(namespace, w[3]),
+		w[4], truncate(node, w[4]),
+		w[5], truncate(pod, w[5]),
 	)
 }
 
