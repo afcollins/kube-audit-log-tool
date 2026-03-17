@@ -8,6 +8,7 @@ import (
 	"github.com/afcollins/kube-audit-log-tool/internal/store"
 	"github.com/afcollins/kube-audit-log-tool/internal/tui/styles"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 )
 
 type EventListPanel struct {
@@ -67,11 +68,6 @@ func (el *EventListPanel) View(s *store.EventStore) string {
 
 	contentWidth := el.Width - 4
 
-	// Header
-	header := formatEventRow("TIME", "VERB", "RESOURCE", "NAMESPACE", "USER", "CODE", contentWidth)
-	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(styles.ColorSecondary).Render(header))
-	b.WriteString("\n")
-
 	visibleLines := el.visibleLines()
 	if visibleLines < 1 {
 		visibleLines = 1
@@ -82,32 +78,49 @@ func (el *EventListPanel) View(s *store.EventStore) string {
 		end = len(indices)
 	}
 
-	for i := el.Scroll; i < end; i++ {
-		e := &s.Events[indices[i]]
-		line := formatEventRow(
-			e.Timestamp.Format("15:04:05"),
-			e.Verb,
-			e.Resource,
-			e.Namespace,
-			truncate(e.Username, 25),
-			fmt.Sprintf("%d", e.StatusCode),
-			contentWidth,
-		)
-
-		if i == el.Cursor && el.Focused {
-			line = styles.SelectedStyle.Render(line)
-		} else if e.StatusCode >= 400 {
-			line = lipgloss.NewStyle().Foreground(styles.ColorDanger).Render(line)
-		}
-
-		b.WriteString(line)
-		if i < end-1 {
-			b.WriteString("\n")
-		}
-	}
-
 	if len(indices) == 0 {
 		b.WriteString(lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("(no matching events)"))
+	} else {
+		rows := make([][]string, 0, end-el.Scroll)
+		for i := el.Scroll; i < end; i++ {
+			e := &s.Events[indices[i]]
+			rows = append(rows, []string{
+				e.Timestamp.Format("15:04:05"),
+				e.Verb,
+				e.Resource,
+				e.Namespace,
+				e.Username,
+				fmt.Sprintf("%d", e.StatusCode),
+			})
+		}
+
+		scroll := el.Scroll
+		cursor := el.Cursor
+		focused := el.Focused
+		events := s.Events
+		filteredIndices := indices
+
+		t := newListTable(contentWidth).
+			Headers("TIME", "VERB", "RESOURCE", "NAMESPACE", "USER", "CODE").
+			Rows(rows...).
+			StyleFunc(func(row, col int) lipgloss.Style {
+				if row == table.HeaderRow {
+					return listHeaderStyle()
+				}
+				actualIdx := scroll + row
+				if actualIdx == cursor && focused {
+					return listSelectedStyle()
+				}
+				if actualIdx < len(filteredIndices) {
+					e := &events[filteredIndices[actualIdx]]
+					if e.StatusCode >= 400 {
+						return listDangerStyle()
+					}
+				}
+				return listCellStyle()
+			})
+
+		b.WriteString(t.Render())
 	}
 
 	style := styles.PanelStyle.Width(el.Width - 2)
@@ -116,27 +129,6 @@ func (el *EventListPanel) View(s *store.EventStore) string {
 	}
 
 	return style.Height(el.Height - 2).Render(b.String())
-}
-
-func formatEventRow(time, verb, resource, namespace, user, code string, width int) string {
-	return fmt.Sprintf("%-10s %-8s %-20s %-15s %-25s %s",
-		truncate(time, 10),
-		truncate(verb, 8),
-		truncate(resource, 20),
-		truncate(namespace, 15),
-		truncate(user, 25),
-		truncate(code, 4),
-	)
-}
-
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen <= 1 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-1] + "…"
 }
 
 // FormatEventDetail returns a pretty-printed detail of an event for the modal.
