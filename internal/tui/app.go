@@ -945,14 +945,10 @@ func (m *Model) updateMetricsSizes() {
 		m.metricFacets[i].Height = styles.FacetPanelHeight
 	}
 
-	// Secondary
+	// Secondary: all in one row, evenly spaced
 	secCount := m.mTotal - m.mPrimary
 	if secCount > 0 {
-		secPerRow := secCount
-		if secPerRow > 4 {
-			secPerRow = 4
-		}
-		secWidth := m.width / secPerRow
+		secWidth := m.width / secCount
 		for i := m.mPrimary; i < m.mTotal; i++ {
 			m.metricFacets[i].Width = secWidth
 			m.metricFacets[i].Height = styles.FacetPanelHeight
@@ -964,19 +960,14 @@ func (m *Model) updateMetricsSizes() {
 	m.scatter.Height = styles.TimelinePanelHeight
 	m.metricList.Width = m.width
 
-	facetRows := 1
-	if m.showSecondary && secCount > 0 {
-		facetRows = 2
-	}
 	// Account for primary rows if > 4
 	primaryRows := (m.mPrimary + 3) / 4
 	if primaryRows < 1 {
 		primaryRows = 1
 	}
-	facetRows = primaryRows
+	facetRows := primaryRows
 	if m.showSecondary && secCount > 0 {
-		secRows := (secCount + 3) / 4
-		facetRows += secRows
+		facetRows++
 	}
 
 	remaining := m.height - (styles.FacetPanelHeight * facetRows) - styles.FilterBarHeight - styles.TimelinePanelHeight - styles.StatusBarHeight
@@ -1121,19 +1112,13 @@ func (m Model) metricsDashboardView() string {
 		}
 	}
 
-	// Secondary facet panels (toggle with 'f')
+	// Secondary facet panels (toggle with 'f') — single row
 	if m.showSecondary && m.mTotal > m.mPrimary {
-		for rowStart := m.mPrimary; rowStart < m.mTotal; rowStart += 4 {
-			rowEnd := rowStart + 4
-			if rowEnd > m.mTotal {
-				rowEnd = m.mTotal
-			}
-			var views []string
-			for i := rowStart; i < rowEnd; i++ {
-				views = append(views, m.metricFacets[i].View())
-			}
-			sections = append(sections, lipgloss.JoinHorizontal(lipgloss.Top, views...))
+		var views []string
+		for i := m.mPrimary; i < m.mTotal; i++ {
+			views = append(views, m.metricFacets[i].View())
 		}
+		sections = append(sections, lipgloss.JoinHorizontal(lipgloss.Top, views...))
 	}
 
 	// Scatter plot

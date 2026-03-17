@@ -10,7 +10,7 @@ import (
 )
 
 // Default primary fields shown without toggling secondary facets.
-var DefaultPrimaryFields = []string{"metricName", "namespace", "node", "pod", "container"}
+var DefaultPrimaryFields = []string{"namespace", "node", "pod", "container"}
 
 type MetricStore struct {
 	Events     []metrics.MetricEvent
