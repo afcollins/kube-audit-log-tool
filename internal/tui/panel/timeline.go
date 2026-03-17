@@ -24,6 +24,7 @@ type TimelinePanel struct {
 	SelectionStart int // -1 means no selection started
 	SelectionEnd   int // -1 means no selection ended
 	buckets        []store.TimelineBucket
+	graphWidth     int    // actual rendered bar count (may be < len(buckets))
 	lastBucketSig  string // tracks whether bucket data changed between renders
 }
 
@@ -51,9 +52,58 @@ func (tp *TimelinePanel) MoveLeft() {
 }
 
 func (tp *TimelinePanel) MoveRight() {
-	if tp.Cursor < len(tp.buckets)-1 {
+	max := tp.maxCursor()
+	if tp.Cursor < max {
 		tp.Cursor++
 	}
+}
+
+func (tp *TimelinePanel) PageLeft() {
+	step := tp.pageStep()
+	tp.Cursor -= step
+	if tp.Cursor < 0 {
+		tp.Cursor = 0
+	}
+}
+
+func (tp *TimelinePanel) PageRight() {
+	step := tp.pageStep()
+	tp.Cursor += step
+	max := tp.maxCursor()
+	if tp.Cursor > max {
+		tp.Cursor = max
+	}
+}
+
+func (tp *TimelinePanel) MoveToStart() {
+	tp.Cursor = 0
+}
+
+func (tp *TimelinePanel) MoveToEnd() {
+	tp.Cursor = tp.maxCursor()
+}
+
+func (tp *TimelinePanel) maxCursor() int {
+	// Use graphWidth when available (set during render) for accurate bounds
+	n := tp.graphWidth
+	if n == 0 {
+		n = len(tp.buckets)
+	}
+	if n > len(tp.buckets) {
+		n = len(tp.buckets)
+	}
+	if n < 1 {
+		return 0
+	}
+	return n - 1
+}
+
+func (tp *TimelinePanel) pageStep() int {
+	n := tp.graphWidth / 10
+	if n < 5 {
+		n = 5
+	}
+	return n
 }
 
 // MarkSelection sets one end of the selection range. First press sets start,
@@ -185,6 +235,16 @@ func (tp *TimelinePanel) View(s TimelineSource) string {
 
 	// Split chart output into lines and prepend Y-axis labels
 	chartLines := strings.Split(bc.View(), "\n")
+
+	// Measure actual rendered width from the chart output
+	if len(chartLines) > 0 {
+		tp.graphWidth = lipgloss.Width(chartLines[0])
+	} else {
+		tp.graphWidth = graphWidth
+	}
+	if tp.Cursor > tp.maxCursor() {
+		tp.Cursor = tp.maxCursor()
+	}
 	axisStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
 	labelFmt := fmt.Sprintf("%%%dd ", yLabelW-1)
 
@@ -206,7 +266,7 @@ func (tp *TimelinePanel) View(s TimelineSource) string {
 	}
 
 	// X-axis line
-	rows = append(rows, strings.Repeat(" ", yLabelW)+axisStyle.Render(strings.Repeat("─", graphWidth)))
+	rows = append(rows, strings.Repeat(" ", yLabelW)+axisStyle.Render(strings.Repeat("─", tp.graphWidth)))
 
 	// Cursor indicator row
 	cursorBarStyle := lipgloss.NewStyle().
@@ -216,7 +276,7 @@ func (tp *TimelinePanel) View(s TimelineSource) string {
 
 	var cursorRow strings.Builder
 	cursorRow.WriteString(strings.Repeat(" ", yLabelW))
-	for col := range tp.buckets {
+	for col := 0; col < tp.graphWidth; col++ {
 		if col == tp.Cursor && tp.Focused {
 			cursorRow.WriteString(cursorBarStyle.Render("▲"))
 		} else if tp.inSelection(col) {
@@ -230,7 +290,7 @@ func (tp *TimelinePanel) View(s TimelineSource) string {
 	// Time labels aligned to graph area
 	startLabel := tp.buckets[0].Start.Format("15:04:05")
 	endLabel := tp.buckets[len(tp.buckets)-1].End.Format("15:04:05")
-	timePadding := graphWidth - len(startLabel) - len(endLabel)
+	timePadding := tp.graphWidth - len(startLabel) - len(endLabel)
 	if timePadding < 1 {
 		timePadding = 1
 	}
@@ -258,7 +318,7 @@ func (tp *TimelinePanel) View(s TimelineSource) string {
 	b.WriteString(timeRow)
 	if tp.Focused {
 		b.WriteString("\n")
-		b.WriteString(styles.HelpStyle.Render("[←→] move  [Enter] mark start/end  [Esc] clear range"))
+		b.WriteString(styles.HelpStyle.Render("[←→] move  [⇧←→] page  [Home/End] jump  [Enter] mark start/end  [Esc] clear"))
 	}
 
 	return panelStyle.Render(b.String())

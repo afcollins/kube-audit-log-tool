@@ -381,6 +381,30 @@ func (m Model) handleAuditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case "shift+left", "H":
+		if m.focusIsTimeline() {
+			m.timeline.PageLeft()
+		}
+		return m, nil
+
+	case "shift+right", "L":
+		if m.focusIsTimeline() {
+			m.timeline.PageRight()
+		}
+		return m, nil
+
+	case "home", "ctrl+a":
+		if m.focusIsTimeline() {
+			m.timeline.MoveToStart()
+		}
+		return m, nil
+
+	case "end", "ctrl+e":
+		if m.focusIsTimeline() {
+			m.timeline.MoveToEnd()
+		}
+		return m, nil
+
 	case "enter", " ":
 		return m.auditSelectCurrent()
 
@@ -713,6 +737,42 @@ func (m Model) handleMetricsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "right", "l":
 		if m.focus == focusTimeline {
 			m.scatter.MoveRight()
+		}
+		return m, nil
+
+	case "shift+left", "H":
+		if m.focus == focusTimeline {
+			m.scatter.PageLeft()
+		}
+		return m, nil
+
+	case "shift+right", "L":
+		if m.focus == focusTimeline {
+			m.scatter.PageRight()
+		}
+		return m, nil
+
+	case "shift+up", "K":
+		if m.focus == focusTimeline {
+			m.scatter.PageUp()
+		}
+		return m, nil
+
+	case "shift+down", "J":
+		if m.focus == focusTimeline {
+			m.scatter.PageDown()
+		}
+		return m, nil
+
+	case "home", "ctrl+a":
+		if m.focus == focusTimeline {
+			m.scatter.MoveToStart()
+		}
+		return m, nil
+
+	case "end", "ctrl+e":
+		if m.focus == focusTimeline {
+			m.scatter.MoveToEnd()
 		}
 		return m, nil
 

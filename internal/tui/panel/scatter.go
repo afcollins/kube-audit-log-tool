@@ -87,6 +87,86 @@ func (sp *ScatterPanel) MoveDown() {
 	}
 }
 
+func (sp *ScatterPanel) PageLeft() {
+	step := sp.pageStepX()
+	sp.Cursor -= step
+	if sp.Cursor < 0 {
+		sp.Cursor = 0
+	}
+}
+
+func (sp *ScatterPanel) PageRight() {
+	step := sp.pageStepX()
+	sp.Cursor += step
+	max := sp.graphWidth - 1
+	if max < 0 {
+		max = 0
+	}
+	if sp.Cursor > max {
+		sp.Cursor = max
+	}
+}
+
+func (sp *ScatterPanel) MoveToStart() {
+	sp.Cursor = 0
+}
+
+func (sp *ScatterPanel) MoveToEnd() {
+	max := sp.graphWidth - 1
+	if max < 0 {
+		max = 0
+	}
+	sp.Cursor = max
+}
+
+func (sp *ScatterPanel) PageUp() {
+	step := sp.pageStepY()
+	max := sp.chartHeight - 1
+	if max < 1 {
+		max = 1
+	}
+	sp.ValueCursor += step
+	if sp.ValueCursor > max {
+		sp.ValueCursor = max
+	}
+}
+
+func (sp *ScatterPanel) PageDown() {
+	step := sp.pageStepY()
+	sp.ValueCursor -= step
+	if sp.ValueCursor < 0 {
+		sp.ValueCursor = 0
+	}
+}
+
+func (sp *ScatterPanel) MoveToTop() {
+	max := sp.chartHeight - 1
+	if max < 1 {
+		max = 1
+	}
+	sp.ValueCursor = max
+}
+
+func (sp *ScatterPanel) MoveToBottom() {
+	sp.ValueCursor = 0
+}
+
+func (sp *ScatterPanel) pageStepX() int {
+	n := sp.graphWidth / 10
+	if n < 5 {
+		n = 5
+	}
+	return n
+}
+
+func (sp *ScatterPanel) pageStepY() int {
+	n := sp.chartHeight / 5
+	if n < 3 {
+		n = 3
+	}
+	return n
+}
+
 // CursorValue returns the Y value at the current ValueCursor position.
 func (sp *ScatterPanel) CursorValue() float64 {
 	steps := sp.chartHeight - 1
@@ -408,7 +488,7 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 	b.WriteString(timeRow.String())
 	if sp.Focused {
 		b.WriteString("\n")
-		b.WriteString(styles.HelpStyle.Render("[←→] time  [↑↓] value  [Enter] time range  [v] value range  [Esc] clear"))
+		b.WriteString(styles.HelpStyle.Render("[←→] move  [⇧] page  [Home/End] jump  [Enter] time  [v] value  [Esc] clear"))
 	}
 
 	return panelStyle.Render(b.String())
