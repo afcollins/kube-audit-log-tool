@@ -14,6 +14,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// fmtVal formats a value for display, using scientific notation for large numbers.
+func fmtVal(v float64) string {
+	if math.Abs(v) >= 10000 {
+		return fmt.Sprintf("%.1e", v)
+	}
+	return fmt.Sprintf("%.2f", v)
+}
+
 // Scatter panel configuration constants.
 const (
 	histWidth      = 22   // character width of the value histogram (including separator)
@@ -333,7 +341,7 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		absV := math.Abs(v)
 		switch {
 		case absV >= 10000:
-			return fmt.Sprintf("%.0f", v)
+			return fmt.Sprintf("%.1e", v)
 		case absV >= 100:
 			return fmt.Sprintf("%.0f", v)
 		case absV >= 1:
@@ -514,15 +522,15 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 
 	// Title with context
 	var b strings.Builder
-	titleParts := fmt.Sprintf("Scatter (%.1f - %.1f, %d pts)", minV, maxV, len(filtered))
+	titleParts := fmt.Sprintf("Scatter (%s - %s, %d pts)", fmtVal(minV), fmtVal(maxV), len(filtered))
 	if sp.Focused {
-		titleParts += fmt.Sprintf("  Y: %.2f", sp.CursorValue())
+		titleParts += fmt.Sprintf("  Y: %s", fmtVal(sp.CursorValue()))
 	}
 	if sp.ValueSelStart >= 0 && sp.ValueSelEnd >= 0 {
 		vMin, vMax := sp.SelectedValueRange()
-		titleParts += fmt.Sprintf("  band: %.2f-%.2f", vMin, vMax)
+		titleParts += fmt.Sprintf("  band: %s-%s", fmtVal(vMin), fmtVal(vMax))
 	} else if sp.ValueSelStart >= 0 {
-		titleParts += fmt.Sprintf("  band start: %.2f (press v for end)", sp.stepValue(sp.ValueSelStart))
+		titleParts += fmt.Sprintf("  band start: %s (press v for end)", fmtVal(sp.stepValue(sp.ValueSelStart)))
 	}
 	if sp.SelectionStart >= 0 && sp.SelectionEnd >= 0 {
 		s, e := sp.SelectedTimeRange()
