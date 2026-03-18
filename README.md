@@ -1,12 +1,26 @@
-# A Kubernetes API Server Audit Log Analysis Tool
+# kbx - kube-burner explorer
 By: Andrew Collins
 
-At this time, only some scripts that use `jq`.
+kbx is a Terminal UI application written in Golang for exploring
+* [kube-burner](https://kube-burner.github.io/kube-burner) locally-indexed metrics
+* kubernetes API server audit events
 
-Attempting to avoid adding heavyweight dependencies that require a stack of software to process a stream of events.
+Build it:
+```
+go build
+```
 
-This is intended to analyze a static audit log file, rather than a real-time streaming solution.
+Run it:
+```
+./kbx                        # Opens file browser, expects you have .log , .log.gz, .json , .json.gz in the current directory
+./kbx audit-events.log.gz    # Opens a single or multiple kapi audit event log files
+./kbx containerCPU.json      # Opens a single or multiple kube-burner local-indexing files
+```
 
-# Future Goals:
-* An interactive terminal UI to filter, group, sort
-* An improved implementation to process larger volume of logs without catting each one every time. (takes ~1.2s for a 200M log file for each command on an 8-core M3)
+This tool CAN:
+* Open multiple types of metrics files at once. Filter them via 'metricName' facet. Press 'f' to show/hide secondary row for filtering.
+* Open metricsProfiles metrics and podLatencyMeasurements in the same session
+* Open plaintext and gzipped files
+
+This tool CANNOT:
+* Open audit and metrics files in the same session, as they are fundamentally different formats and render differently. One at a time for now, please.
