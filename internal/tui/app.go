@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -77,6 +78,10 @@ type Model struct {
 	loadedCount  int
 	loadStart    time.Time
 	confirmQuit  bool
+
+	// Value range input mode (metrics only)
+	valueInput    bool
+	valueInputBuf string
 }
 
 type filesParsedMsg struct {
@@ -312,6 +317,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		return m, nil
+	}
+
+	// Handle value range input mode
+	if m.valueInput {
+		return m.handleValueInput(msg)
 	}
 
 	// Handle facet search mode: intercept keys when a facet is searching
@@ -663,6 +673,100 @@ func (m Model) handleValueSelect() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) handleValueInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	switch key {
+	case "esc":
+		m.valueInput = false
+		m.valueInputBuf = ""
+		m.statusMsg = ""
+		return m, nil
+	case "enter":
+		m.valueInput = false
+		minV, maxV, err := parseValueRange(m.valueInputBuf)
+		if err != nil {
+			m.statusMsg = fmt.Sprintf("Invalid range: %v", err)
+			return m, nil
+		}
+		m.metricStore.SetValueFilter(minV, maxV)
+		m.metricList.ResetCursor()
+		m.refreshPanels()
+		m.statusMsg = fmt.Sprintf("Value filter: %s (%d results)",
+			formatValueRange(minV, maxV), m.metricStore.FilteredCount())
+		return m, nil
+	case "backspace":
+		if len(m.valueInputBuf) > 0 {
+			m.valueInputBuf = m.valueInputBuf[:len(m.valueInputBuf)-1]
+		}
+		m.statusMsg = "Value range: " + m.valueInputBuf + "█"
+		return m, nil
+	default:
+		if len(key) == 1 && strings.ContainsRune("0123456789.,-eE+", rune(key[0])) {
+			m.valueInputBuf += key
+			m.statusMsg = "Value range: " + m.valueInputBuf + "█"
+		}
+		return m, nil
+	}
+}
+
+func parseFloatOrDefault(s string, def float64) (float64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return def, nil
+	}
+	return strconv.ParseFloat(s, 64)
+}
+
+// parseValueRange parses value range input: "MIN,MAX", "MIN-MAX", "MIN", ",MAX", "-MAX".
+func parseValueRange(s string) (float64, float64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, 0, fmt.Errorf("empty input")
+	}
+
+	// Find separator: comma, or dash (skipping a leading dash for negatives)
+	idx := strings.Index(s, ",")
+	if idx < 0 {
+		offset := 0
+		if s[0] == '-' {
+			offset = 1
+		}
+		if di := strings.Index(s[offset:], "-"); di >= 0 {
+			idx = offset + di
+		}
+	}
+
+	if idx < 0 {
+		// No separator — minimum only
+		v, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid number: %s", s)
+		}
+		return v, math.MaxFloat64, nil
+	}
+
+	minV, err := parseFloatOrDefault(s[:idx], -math.MaxFloat64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid min: %s", s[:idx])
+	}
+	maxV, err := parseFloatOrDefault(s[idx+1:], math.MaxFloat64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid max: %s", s[idx+1:])
+	}
+	return minV, maxV, nil
+}
+
+func formatValueRange(minV, maxV float64) string {
+	switch {
+	case maxV >= math.MaxFloat64/2:
+		return fmt.Sprintf("≥ %.2f", minV)
+	case minV <= -math.MaxFloat64/2:
+		return fmt.Sprintf("≤ %.2f", maxV)
+	default:
+		return fmt.Sprintf("%.2f - %.2f", minV, maxV)
+	}
+}
+
 func (m Model) showAuditDetail() (tea.Model, tea.Cmd) {
 	idx := m.eventList.SelectedIndex(m.store)
 	if idx < 0 {
@@ -783,6 +887,12 @@ func (m Model) handleMetricsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.focus == focusTimeline {
 			return m.handleValueSelect()
 		}
+		return m, nil
+
+	case "V":
+		m.valueInput = true
+		m.valueInputBuf = ""
+		m.statusMsg = "Value range: MIN  MIN,MAX  ,MAX  (Enter to apply, Esc to cancel)"
 		return m, nil
 
 	case "c":
