@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/afcollins/kube-audit-log-tool/internal/store"
+	"github.com/afcollins/kbx/internal/store"
 )
 
 // ExportJSON writes the raw JSON of filtered events to the given file path.

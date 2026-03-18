@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/afcollins/kube-audit-log-tool/internal/tui"
+	"github.com/afcollins/kbx/internal/tui"
 )
 
 func main() {

@@ -1,4 +1,4 @@
-module github.com/afcollins/kube-audit-log-tool
+module github.com/afcollins/kbx
 
 go 1.24.2
 

@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/afcollins/kube-audit-log-tool/internal/tui/styles"
+	"github.com/afcollins/kbx/internal/tui/styles"
 	"github.com/charmbracelet/lipgloss"
 )
 

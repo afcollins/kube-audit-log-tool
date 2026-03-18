@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build and Run
 
 ```bash
-go build -o kube-audit-log-tool .
+go build -o kbx .
 go run . [file1.log file2.log.gz ...]   # launches TUI; no args shows file picker
 ```
 
@@ -48,7 +48,7 @@ Interactive TUI for exploring Kubernetes API server audit logs and metrics. Buil
 
 ### Metrics-Specific Panels
 
-- **ScatterPanel** (`panel/scatter.go`): Plots Value (Y) vs Timestamp (X) using ntcharts linechart. Supports time range selection (Enter), value band selection (v key), and inline value distribution histogram. Configurable constants at top: `histWidth`, `histShowLabels`.
+- **ScatterPanel** (`panel/scatter.go`): Density heatmap of Value (Y) vs Timestamp (X) using ntcharts heatmap. Cell color reflects point density (cool-to-hot gradient). Supports time range selection (Enter), value band selection (v key), typed value range (V key), and inline value distribution histogram. Configurable constants at top: `histWidth`, `histShowLabels`.
 - **MetricListPanel** (`panel/metriclist.go`): Auto-sizes columns (namespace, node, pod) to fit actual data widths from loaded events.
 - **MetricStore** (`mstore/store.go`): Dynamic facet discovery. `metricName` is a secondary facet. Secondary facets render in a single evenly-spaced row.
 
@@ -58,9 +58,9 @@ Interactive TUI for exploring Kubernetes API server audit logs and metrics. Buil
 
 ### Dependencies
 
-- `github.com/NimbleMarkets/ntcharts` — chart rendering: barchart for audit timeline, linechart with DrawRune for metrics scatter plot
+- `github.com/NimbleMarkets/ntcharts` — chart rendering: barchart for audit timeline, heatmap for metrics density plot
 - `github.com/charmbracelet/lipgloss/table` — auto-sizing tables for event and metric list panels
 
 ## Module
 
-`github.com/afcollins/kube-audit-log-tool` — Go 1.24
+`github.com/afcollins/kbx` — Go 1.24

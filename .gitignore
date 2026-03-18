@@ -3,4 +3,5 @@
 *.sorted
 *.log.gz
 kube-audit-log-tool
+kbx
 audit-export-*.json

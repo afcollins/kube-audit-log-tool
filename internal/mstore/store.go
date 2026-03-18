@@ -5,8 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/afcollins/kube-audit-log-tool/internal/metrics"
-	"github.com/afcollins/kube-audit-log-tool/internal/store"
+	"github.com/afcollins/kbx/internal/metrics"
+	"github.com/afcollins/kbx/internal/store"
 )
 
 // Default primary fields shown without toggling secondary facets.

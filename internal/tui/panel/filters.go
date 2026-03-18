@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/afcollins/kube-audit-log-tool/internal/store"
-	"github.com/afcollins/kube-audit-log-tool/internal/tui/styles"
+	"github.com/afcollins/kbx/internal/store"
+	"github.com/afcollins/kbx/internal/tui/styles"
 )
 
 type FilterBar struct {

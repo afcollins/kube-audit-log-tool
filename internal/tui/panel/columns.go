@@ -1,7 +1,7 @@
 package panel
 
 import (
-	"github.com/afcollins/kube-audit-log-tool/internal/tui/styles"
+	"github.com/afcollins/kbx/internal/tui/styles"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
 )

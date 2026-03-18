@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/afcollins/kube-audit-log-tool/internal/audit"
-	"github.com/afcollins/kube-audit-log-tool/internal/store"
-	"github.com/afcollins/kube-audit-log-tool/internal/tui/styles"
+	"github.com/afcollins/kbx/internal/audit"
+	"github.com/afcollins/kbx/internal/store"
+	"github.com/afcollins/kbx/internal/tui/styles"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
 )

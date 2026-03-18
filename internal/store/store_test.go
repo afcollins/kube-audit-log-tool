@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"github.com/afcollins/kube-audit-log-tool/internal/audit"
+	"github.com/afcollins/kbx/internal/audit"
 )
 
 func loadTestStore(t *testing.T) *EventStore {

@@ -1,0 +1,39 @@
+{
+  "kind": "Event",
+  "apiVersion": "audit.k8s.io/v1",
+  "level": "Metadata",
+  "auditID": "532b1164-8b26-4b49-95f2-907424a80cac",
+  "stage": "ResponseComplete",
+  "requestURI": "/apis/coordination.k8s.io/v1/namespaces/kube-node-lease/leases/ip-10-0-31-19.us-west-2.compute.internal?timeout=10s",
+  "verb": "update",
+  "user": {
+    "username": "system:node:ip-10-0-31-19.us-west-2.compute.internal",
+    "groups": [
+      "system:nodes",
+      "system:authenticated"
+    ]
+  },
+  "sourceIPs": [
+    "10.0.6.159"
+  ],
+  "userAgent": "kubelet/v1.27.4+2c83a9f (linux/amd64) kubernetes/bbf96b6",
+  "objectRef": {
+    "resource": "leases",
+    "namespace": "kube-node-lease",
+    "name": "ip-10-0-31-19.us-west-2.compute.internal",
+    "uid": "f0b5005d-aee8-4738-9b95-3e3bb91dd156",
+    "apiGroup": "coordination.k8s.io",
+    "apiVersion": "v1",
+    "resourceVersion": "19706"
+  },
+  "responseStatus": {
+    "metadata": {},
+    "code": 200
+  },
+  "requestReceivedTimestamp": "2023-09-01T15:37:02.744516Z",
+  "stageTimestamp": "2023-09-01T15:37:02.757366Z",
+  "annotations": {
+    "authorization.k8s.io/decision": "allow",
+    "authorization.k8s.io/reason": ""
+  }
+}
