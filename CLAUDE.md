@@ -25,13 +25,13 @@ Interactive TUI for exploring Kubernetes API server audit logs and metrics. Buil
 
 ### Data Flow
 
-1. **Parse**: `internal/audit` streams JSON-lines (.log/.log.gz); `internal/metrics` parses JSON arrays (.json/.json.gz). Mode auto-detected from file extensions.
+1. **Parse**: `internal/audit` parses JSON-lines (.log/.log.gz) and JSON arrays (.json/.json.gz); `internal/metrics` parses JSON arrays (.json/.json.gz). Mode auto-detected: .json/.json.gz files are inspected for `audit.k8s.io` apiVersion to distinguish audit exports from metrics.
 2. **Store**: `internal/store.EventStore` for audit events; `internal/mstore.MetricStore` for metrics. Both use inverted indexes, filtered slices, and `refilter()` on change. MetricStore supports time, value, and facet filters.
 3. **Render** (`internal/tui` + `internal/tui/panel`): Root `Model` in `tui/app.go` orchestrates state. Panel types: Facet, Timeline, ScatterPanel, EventList, MetricList, EventDetail, FilterBar, FilePicker.
 
 ### Key Design Decisions
 
-- **No raw JSON in memory** (audit): Re-read from disk via file offset/length. Metrics store raw JSON (small files).
+- **No raw JSON in memory** (audit): Re-read from disk via file offset/length for JSON-lines; offset tracking unavailable for JSON array imports. Metrics store raw JSON (small files).
 - **Styles in `tui/styles`**: Breaks import cycle between `tui` and `tui/panel`.
 - **Focus model**: Integer-based focus index. Audit: 0-5 facets, 6 timeline, 7 event list. Metrics: 0..N facets, N scatter, N+1 metric list.
 - **Facet panels are generic**: `FacetPanel` takes a field name; both stores implement `FacetSource`.

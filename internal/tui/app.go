@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"compress/gzip"
+	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"strconv"
@@ -137,10 +140,65 @@ func NewModel(files []string) Model {
 func detectMetricsMode(files []string) bool {
 	for _, f := range files {
 		if strings.HasSuffix(f, ".json") || strings.HasSuffix(f, ".json.gz") {
+			if isAuditJSON(f) {
+				return false
+			}
 			return true
 		}
 	}
 	return false
+}
+
+// isAuditJSON decodes the first JSON object from a file and checks for
+// audit.k8s.io API version and Event kind. Handles both plain and gzipped files.
+func isAuditJSON(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	var r io.Reader = f
+	if strings.HasSuffix(path, ".gz") {
+		gz, err := gzip.NewReader(f)
+		if err != nil {
+			return false
+		}
+		defer gz.Close()
+		r = gz
+	}
+
+	var probe struct {
+		APIVersion string `json:"apiVersion"`
+		Kind       string `json:"kind"`
+	}
+
+	dec := json.NewDecoder(r)
+	// Skip opening '[' if the file is a JSON array
+	tok, err := dec.Token()
+	if err != nil {
+		return false
+	}
+	if tok != json.Delim('[') {
+		// First token wasn't '[', so it's a field key or value.
+		// Re-open to decode the full first object.
+		f.Seek(0, 0)
+		if strings.HasSuffix(path, ".gz") {
+			gz, err := gzip.NewReader(f)
+			if err != nil {
+				return false
+			}
+			defer gz.Close()
+			dec = json.NewDecoder(gz)
+		} else {
+			dec = json.NewDecoder(f)
+		}
+	}
+
+	if err := dec.Decode(&probe); err != nil {
+		return false
+	}
+	return strings.HasPrefix(probe.APIVersion, "audit.k8s.io/") && probe.Kind == "Event"
 }
 
 func (m Model) Init() tea.Cmd {

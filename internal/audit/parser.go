@@ -98,6 +98,31 @@ func decompressToTemp(r io.Reader) (string, error) {
 }
 
 func parseReader(r io.Reader, fileIndex int) ([]AuditEvent, error) {
+	br := bufio.NewReaderSize(r, 1024*1024)
+
+	// Peek at first non-whitespace byte to detect JSON array vs JSON-lines
+	isArray := false
+	for {
+		b, err := br.Peek(1)
+		if err != nil {
+			return nil, nil
+		}
+		if b[0] == ' ' || b[0] == '\t' || b[0] == '\n' || b[0] == '\r' {
+			br.ReadByte()
+			continue
+		}
+		isArray = b[0] == '['
+		break
+	}
+
+	if isArray {
+		return parseJSONArray(br, fileIndex)
+	}
+	return parseJSONLines(br, fileIndex)
+}
+
+// parseJSONLines parses one JSON object per line, tracking byte offsets for raw re-reading.
+func parseJSONLines(r io.Reader, fileIndex int) ([]AuditEvent, error) {
 	var events []AuditEvent
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
@@ -111,39 +136,67 @@ func parseReader(r io.Reader, fileIndex int) ([]AuditEvent, error) {
 			continue
 		}
 
-		var raw rawEvent
-		if err := json.Unmarshal(line, &raw); err != nil {
-			offset += int64(lineLen) + 1
-			continue
+		if e, ok := parseRawEvent(line, fileIndex, offset, lineLen); ok {
+			events = append(events, e)
 		}
-
-		ts, _ := time.Parse(time.RFC3339Nano, raw.StageTimestamp)
-
-		sourceIP := ""
-		if len(raw.SourceIPs) > 0 {
-			sourceIP = raw.SourceIPs[0]
-		}
-
-		events = append(events, AuditEvent{
-			Verb:       raw.Verb,
-			Resource:   raw.ObjectRef.Resource,
-			APIGroup:   raw.ObjectRef.APIGroup,
-			APIVersion: raw.ObjectRef.APIVersion,
-			Namespace:  raw.ObjectRef.Namespace,
-			Username:   raw.User.Username,
-			SourceIP:   sourceIP,
-			UserAgent:  raw.UserAgent,
-			StatusCode: raw.ResponseStatus.Code,
-			Timestamp:  ts,
-			FileIndex:  fileIndex,
-			FileOffset: offset,
-			LineLength: lineLen,
-		})
 
 		offset += int64(lineLen) + 1 // +1 for newline
 	}
 
 	return events, scanner.Err()
+}
+
+// parseJSONArray parses a JSON array of audit event objects using json.Decoder.
+func parseJSONArray(r io.Reader, fileIndex int) ([]AuditEvent, error) {
+	var events []AuditEvent
+	dec := json.NewDecoder(r)
+
+	// Consume opening '['
+	if _, err := dec.Token(); err != nil {
+		return nil, err
+	}
+
+	for dec.More() {
+		var obj json.RawMessage
+		if err := dec.Decode(&obj); err != nil {
+			continue
+		}
+		if e, ok := parseRawEvent(obj, fileIndex, 0, len(obj)); ok {
+			events = append(events, e)
+		}
+	}
+
+	return events, nil
+}
+
+func parseRawEvent(data []byte, fileIndex int, offset int64, lineLen int) (AuditEvent, bool) {
+	var raw rawEvent
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return AuditEvent{}, false
+	}
+
+	ts, _ := time.Parse(time.RFC3339Nano, raw.StageTimestamp)
+
+	sourceIP := ""
+	if len(raw.SourceIPs) > 0 {
+		sourceIP = raw.SourceIPs[0]
+	}
+
+	return AuditEvent{
+		Verb:       raw.Verb,
+		Resource:   raw.ObjectRef.Resource,
+		APIGroup:   raw.ObjectRef.APIGroup,
+		APIVersion: raw.ObjectRef.APIVersion,
+		Namespace:  raw.ObjectRef.Namespace,
+		Username:   raw.User.Username,
+		SourceIP:   sourceIP,
+		UserAgent:  raw.UserAgent,
+		StatusCode: raw.ResponseStatus.Code,
+		Timestamp:  ts,
+		FileIndex:  fileIndex,
+		FileOffset: offset,
+		LineLength: lineLen,
+	}, true
 }
 
 // ReadRawJSON reads the raw JSON line for an event from the given file path.
