@@ -373,31 +373,21 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		sp.ValueCursor = chartHeight - 1
 	}
 
-	// Build density map: count data points per cell
+	// Build density map using the heatmap's own coordinate mapping
+	// so cell binning matches the canvas exactly.
 	type cell struct{ x, y int }
 	density := make(map[cell]int)
-	gw := sp.graphWidth
-	if gw < 1 {
-		gw = 1
-	}
-	gh := chartHeight
-	if gh < 1 {
-		gh = 1
-	}
-	xRange := maxX - minX
-	yRange := maxV - minV
+	cellRepresentative := make(map[cell]canvas.Float64Point)
 	for _, idx := range filtered {
 		e := &ms.Events[idx]
-		x := float64(e.Timestamp.UnixMilli())
-		cx := int((x - minX) / xRange * float64(gw-1))
-		cy := int((e.Value - minV) / yRange * float64(gh-1))
-		if cx >= gw {
-			cx = gw - 1
+		fp := canvas.Float64Point{X: float64(e.Timestamp.UnixMilli()), Y: e.Value}
+		sf := hm.ScaleFloat64PointForLine(fp)
+		cp := canvas.CanvasPointFromFloat64Point(hm.Origin(), sf)
+		c := cell{cp.X, cp.Y}
+		density[c]++
+		if _, ok := cellRepresentative[c]; !ok {
+			cellRepresentative[c] = fp
 		}
-		if cy >= gh {
-			cy = gh - 1
-		}
-		density[cell{cx, cy}]++
 	}
 
 	// Find max density for scaling
@@ -408,12 +398,13 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		}
 	}
 
-	// Push heatpoints: map cell coords back to data space
+	// Push heatpoints using representative data-space coordinates
 	for c, count := range density {
-		x := minX + xRange*float64(c.x)/float64(gw-1)
-		y := minV + yRange*float64(c.y)/float64(gh-1)
-		hm.Push(heatmap.NewHeatPoint(x, y, float64(count)/float64(maxDensity)))
+		pt := cellRepresentative[c]
+		hm.Push(heatmap.NewHeatPoint(pt.X, pt.Y, float64(count)/float64(maxDensity)))
 	}
+	// Draw axis first so heatmap backgrounds are applied on top
+	hm.DrawXYAxisAndLabel()
 	hm.Draw()
 
 	// Draw value selection band (shaded region between two Y boundaries)
@@ -450,7 +441,6 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		}
 	}
 
-	hm.DrawXYAxisAndLabel()
 	chartStr := hm.View()
 
 	// Build value histogram
