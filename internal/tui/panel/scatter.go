@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/NimbleMarkets/ntcharts/canvas"
+	"github.com/NimbleMarkets/ntcharts/heatmap"
 	"github.com/NimbleMarkets/ntcharts/linechart"
 	"github.com/afcollins/kube-audit-log-tool/internal/mstore"
 	"github.com/afcollins/kube-audit-log-tool/internal/tui/styles"
@@ -18,6 +19,20 @@ const (
 	histWidth      = 22   // character width of the value histogram (including separator)
 	histShowLabels = true // show count labels on histogram bars
 )
+
+// heatColorScale maps normalized density (0..1) to a cool-to-hot gradient.
+var heatColorScale = []lipgloss.Color{
+	lipgloss.Color("#1a1a2e"), // very low — dark blue
+	lipgloss.Color("#16537e"), // low — blue
+	lipgloss.Color("#1b9e77"), // low-mid — teal
+	lipgloss.Color("#66c2a5"), // mid-low — light teal
+	lipgloss.Color("#a6d854"), // mid — yellow-green
+	lipgloss.Color("#fee08b"), // mid-high — light yellow
+	lipgloss.Color("#fdae61"), // high — orange
+	lipgloss.Color("#f46d43"), // very high — red-orange
+	lipgloss.Color("#d73027"), // extreme — red
+	lipgloss.Color("#a50026"), // max — dark red
+}
 
 type ScatterPanel struct {
 	Width          int
@@ -334,18 +349,22 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		chartCW = 15
 	}
 
-	lc := linechart.New(chartCW, chartHeight, minX, maxX, minV, maxV,
-		linechart.WithXYSteps(0, 2),
-		linechart.WithYLabelFormatter(yLabelFmt),
-		linechart.WithStyles(
-			lipgloss.NewStyle().Foreground(styles.ColorMuted),
-			lipgloss.NewStyle().Foreground(styles.ColorMuted),
-			lipgloss.NewStyle().Foreground(styles.ColorBar),
-		),
+	hm := heatmap.New(chartCW, chartHeight,
+		heatmap.WithColorScale(heatColorScale),
+		heatmap.WithValueRange(0, 1),
+		heatmap.WithStyle(linechart.New(chartCW, chartHeight, minX, maxX, minV, maxV,
+			linechart.WithXYSteps(0, 2),
+			linechart.WithYLabelFormatter(yLabelFmt),
+			linechart.WithStyles(
+				lipgloss.NewStyle().Foreground(styles.ColorMuted),
+				lipgloss.NewStyle().Foreground(styles.ColorMuted),
+				lipgloss.NewStyle().Foreground(styles.ColorBar),
+			),
+		)),
 	)
 
-	sp.graphWidth = lc.GraphWidth()
-	sp.graphOriX = lc.Origin().X
+	sp.graphWidth = hm.GraphWidth()
+	sp.graphOriX = hm.Origin().X
 
 	if sp.graphWidth > 0 && sp.Cursor >= sp.graphWidth {
 		sp.Cursor = sp.graphWidth - 1
@@ -354,20 +373,48 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		sp.ValueCursor = chartHeight - 1
 	}
 
-	// Plot data points. Other options include:
-	// 	'·' (middle dot, U+00B7). Here are some options to consider:
-	//  '•' (U+2022, bullet) — larger filled circle, good visibility
-	//  '●' (U+25CF, black circle) — full-size filled circle, very bold
-	//  '◦' (U+25E6, white bullet) — hollow small circle
-	//  '⬤' (U+2B24, large circle) — very large, may overlap
-	//  '✦' (U+2726, four-pointed star) — distinctive shape
-	//  '⁕' (U+2055, flower punctuation) — small asterisk-like
-	//  '∘' (U+2218, ring operator) — small ring
+	// Build density map: count data points per cell
+	type cell struct{ x, y int }
+	density := make(map[cell]int)
+	gw := sp.graphWidth
+	if gw < 1 {
+		gw = 1
+	}
+	gh := chartHeight
+	if gh < 1 {
+		gh = 1
+	}
+	xRange := maxX - minX
+	yRange := maxV - minV
 	for _, idx := range filtered {
 		e := &ms.Events[idx]
 		x := float64(e.Timestamp.UnixMilli())
-		lc.DrawRune(canvas.Float64Point{X: x, Y: e.Value}, '•')
+		cx := int((x - minX) / xRange * float64(gw-1))
+		cy := int((e.Value - minV) / yRange * float64(gh-1))
+		if cx >= gw {
+			cx = gw - 1
+		}
+		if cy >= gh {
+			cy = gh - 1
+		}
+		density[cell{cx, cy}]++
 	}
+
+	// Find max density for scaling
+	maxDensity := 1
+	for _, d := range density {
+		if d > maxDensity {
+			maxDensity = d
+		}
+	}
+
+	// Push heatpoints: map cell coords back to data space
+	for c, count := range density {
+		x := minX + xRange*float64(c.x)/float64(gw-1)
+		y := minV + yRange*float64(c.y)/float64(gh-1)
+		hm.Push(heatmap.NewHeatPoint(x, y, float64(count)/float64(maxDensity)))
+	}
+	hm.Draw()
 
 	// Draw value selection band (shaded region between two Y boundaries)
 	if sp.Focused && sp.ValueSelStart >= 0 {
@@ -377,7 +424,6 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		if sp.ValueSelEnd >= 0 {
 			hi = sp.ValueSelEnd
 		} else {
-			// Selection in progress — show band from start to cursor
 			hi = sp.ValueCursor
 		}
 		if lo > hi {
@@ -387,9 +433,9 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		hiVal := sp.stepValue(hi)
 		for i := 0; i <= sp.graphWidth; i++ {
 			x := minX + (maxX-minX)*float64(i)/float64(sp.graphWidth)
-			lc.DrawRuneWithStyle(canvas.Float64Point{X: x, Y: loVal}, '─', bandStyle)
+			hm.DrawRuneWithStyle(canvas.Float64Point{X: x, Y: loVal}, '─', bandStyle)
 			if hi != lo {
-				lc.DrawRuneWithStyle(canvas.Float64Point{X: x, Y: hiVal}, '─', bandStyle)
+				hm.DrawRuneWithStyle(canvas.Float64Point{X: x, Y: hiVal}, '─', bandStyle)
 			}
 		}
 	}
@@ -400,12 +446,12 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		cursorY := sp.CursorValue()
 		for i := 0; i <= sp.graphWidth; i++ {
 			x := minX + (maxX-minX)*float64(i)/float64(sp.graphWidth)
-			lc.DrawRuneWithStyle(canvas.Float64Point{X: x, Y: cursorY}, '─', cursorLineStyle)
+			hm.DrawRuneWithStyle(canvas.Float64Point{X: x, Y: cursorY}, '─', cursorLineStyle)
 		}
 	}
 
-	lc.DrawXYAxisAndLabel()
-	chartStr := lc.View()
+	hm.DrawXYAxisAndLabel()
+	chartStr := hm.View()
 
 	// Build value histogram
 	histLines := sp.buildHistogram(filtered, ms, chartHeight, minV, maxV)
@@ -423,13 +469,20 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		}
 	}
 
-	// X-axis line aligned to graph area
+	// Heat legend below histogram
+	legendStr := buildHeatLegend(maxDensity)
+	legendLines := strings.Split(legendStr, "\n")
+
+	// X-axis line aligned to graph area, with legend appended
 	axisStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
 	var axisRow strings.Builder
 	if sp.graphOriX > 0 {
 		axisRow.WriteString(strings.Repeat(" ", sp.graphOriX+1))
 	}
 	axisRow.WriteString(axisStyle.Render(strings.Repeat("─", sp.graphWidth)))
+	if len(legendLines) > 0 {
+		axisRow.WriteString(legendLines[0])
+	}
 
 	// Cursor row aligned to graph area
 	cursorBarStyle := lipgloss.NewStyle().
@@ -449,6 +502,9 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		} else {
 			cursorRow.WriteString(" ")
 		}
+	}
+	if len(legendLines) > 1 {
+		cursorRow.WriteString(legendLines[1])
 	}
 
 	// Time labels aligned to graph area
@@ -569,6 +625,37 @@ func (sp *ScatterPanel) buildHistogram(filtered []int, ms *mstore.MetricStore, c
 	}
 
 	return lines
+}
+
+// buildHeatLegend renders a compact color scale legend that fits within histWidth.
+func buildHeatLegend(maxDensity int) string {
+	var b strings.Builder
+	labelStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
+
+	// Gradient bar: one block per color in the scale
+	b.WriteString(labelStyle.Render("│"))
+	for _, c := range heatColorScale {
+		s := lipgloss.NewStyle().Background(c)
+		b.WriteString(s.Render(" "))
+	}
+	// Pad to fill histWidth
+	pad := histWidth - 1 - len(heatColorScale)
+	if pad > 0 {
+		b.WriteString(strings.Repeat(" ", pad))
+	}
+	b.WriteString("\n")
+
+	// Labels: "1" left-aligned, max right-aligned under the gradient
+	b.WriteString(labelStyle.Render("│"))
+	maxLabel := fmt.Sprintf("%d", maxDensity)
+	minLabel := "1"
+	labelPad := len(heatColorScale) - len(minLabel) - len(maxLabel)
+	if labelPad < 1 {
+		labelPad = 1
+	}
+	b.WriteString(labelStyle.Render(minLabel + strings.Repeat(" ", labelPad) + maxLabel))
+
+	return b.String()
 }
 
 func (sp *ScatterPanel) inSelection(col int) bool {
